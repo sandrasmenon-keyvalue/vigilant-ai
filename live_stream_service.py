@@ -387,8 +387,8 @@ class StreamFrameProcessor:
         self.max_drowsiness_score = 0.0
         self.alert_history = deque(maxlen=10)
         self.processing_times = deque(maxlen=20)
-        self.frame_buffer = deque(maxlen=10)  # Buffer for batch processing (5-10 frames)
-        self.batch_size = 5  # Process frames in batches of 5
+        self.frame_buffer = deque(maxlen=6)  # Buffer for batch processing (2-3 frames)
+        self.batch_size = 2  # Process frames in batches of 2 (optimized for 2 FPS)
         self.face_quality_scores = deque(maxlen=10)  # Track face detection quality
         
         # Logging system for drowsiness scores
