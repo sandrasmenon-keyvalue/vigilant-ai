@@ -1,0 +1,16 @@
+{
+  "nod_frequency": 0.8255948424339294,
+  "head_yaw": 0.032503701746463776,
+  "head_roll": 0.029169294983148575,
+  "nod_detected": 0.028352363035082817,
+  "head_pitch": 0.021901434287428856,
+  "left_ear": 0.017013534903526306,
+  "avg_ear": 0.015220166184008121,
+  "right_ear": 0.015213429927825928,
+  "mar": 0.015031198039650917,
+  "blink_detected": 0.0,
+  "blink_frequency": 0.0,
+  "eye_closure": 0.0,
+  "face_detected": 0.0,
+  "yawn_indicator": 0.0
+}
