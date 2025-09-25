@@ -22,6 +22,16 @@ python-dotenv==1.1.1
 pytz==2024.2
 python-dateutil==2.9.0
 
+# FastAPI service
+fastapi==0.104.1
+uvicorn==0.24.0
+python-multipart==0.0.6
+websockets==12.0
+
 # Development and testing
 jupyter==1.0.0
 tqdm==4.65.0
+
+# Additional for inference API
+uvicorn[standard]==0.24.0
+aiohttp==3.9.0

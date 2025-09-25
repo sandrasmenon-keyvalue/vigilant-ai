@@ -23,14 +23,18 @@ class DrowsinessFeatureExtractor:
         self.ear_threshold = ear_threshold
         self.mar_threshold = mar_threshold
         
-        # Blink detection parameters
-        self.blink_buffer = deque(maxlen=10)  # Store last 10 EAR values
+        # Blink detection parameters  
+        self.blink_buffer = deque(maxlen=15)  # Store last 15 EAR values (increased for better detection)
         self.blink_count = 0
         self.last_blink_time = 0
+        self.session_start_time = None  # Track session start for proper frequency calculation
         
         # Head nod detection parameters
         self.head_angle_buffer = deque(maxlen=5)  # Store last 5 head angles
         self.nod_count = 0
+        
+        # Debug logging
+        self.frame_count = 0
         
     def calculate_ear(self, eye_landmarks: List[Tuple[float, float, float]]) -> float:
         """
@@ -144,7 +148,7 @@ class DrowsinessFeatureExtractor:
     
     def detect_blink(self, ear: float, timestamp: float) -> bool:
         """
-        Detect if a blink occurred based on EAR values.
+        Detect if a blink occurred based on EAR values with improved logic.
         
         Args:
             ear: Current eye aspect ratio
@@ -153,21 +157,41 @@ class DrowsinessFeatureExtractor:
         Returns:
             True if blink detected, False otherwise
         """
+        self.frame_count += 1
+        
+        # Initialize session start time
+        if self.session_start_time is None:
+            self.session_start_time = timestamp
+            
         self.blink_buffer.append(ear)
         
-        # Need at least 3 frames to detect blink
-        if len(self.blink_buffer) < 3:
+        # Need at least 5 frames for better detection (was 3)
+        if len(self.blink_buffer) < 5:
             return False
         
-        # Blink detection: EAR drops below threshold and then rises
-        if (self.blink_buffer[-3] > self.ear_threshold and
-            self.blink_buffer[-2] < self.ear_threshold and
-            self.blink_buffer[-1] > self.ear_threshold):
+        # More robust blink detection: look for sustained drop and rise
+        # Pattern: HIGH → HIGH → LOW → HIGH → HIGH (center frame is blink)
+        recent_values = list(self.blink_buffer)[-5:]
+        
+        # Adaptive threshold based on recent EAR values
+        avg_ear = sum(recent_values) / len(recent_values)
+        adaptive_threshold = min(self.ear_threshold, avg_ear * 0.7)  # 70% of average
+        
+        # Blink detection: significant drop in middle frame
+        if (recent_values[0] > adaptive_threshold and
+            recent_values[1] > adaptive_threshold and  
+            recent_values[2] < adaptive_threshold and  # Blink frame
+            recent_values[3] > adaptive_threshold and
+            recent_values[4] > adaptive_threshold):
             
             # Avoid counting same blink multiple times
-            if timestamp - self.last_blink_time > 0.3:  # 300ms minimum between blinks
+            if timestamp - self.last_blink_time > 0.2:  # 200ms minimum between blinks
                 self.blink_count += 1
                 self.last_blink_time = timestamp
+                
+                # Debug logging
+                print(f"🔍 BLINK DETECTED! Frame {self.frame_count}, EAR pattern: {[f'{v:.3f}' for v in recent_values]} (threshold: {adaptive_threshold:.3f})")
+                
                 return True
         
         return False
@@ -230,8 +254,12 @@ class DrowsinessFeatureExtractor:
         blink_detected = self.detect_blink(avg_ear, timestamp)
         nod_detected = self.detect_head_nod(head_angles, timestamp)
         
-        # Calculate blink frequency (blinks per minute)
-        blink_frequency = self.blink_count / max(timestamp / 60.0, 1.0) if timestamp > 0 else 0
+        # Calculate blink frequency (blinks per minute) based on session duration
+        if self.session_start_time and timestamp > self.session_start_time:
+            session_duration_minutes = (timestamp - self.session_start_time) / 60.0
+            blink_frequency = self.blink_count / max(session_duration_minutes, 0.1)  # Minimum 6 seconds
+        else:
+            blink_frequency = 0.0
         
         # Calculate nod frequency (nods per minute)
         nod_frequency = self.nod_count / max(timestamp / 60.0, 1.0) if timestamp > 0 else 0
