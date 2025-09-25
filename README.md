@@ -2,6 +2,11 @@
 
 A real-time drowsiness detection system that analyzes video frames at 5 FPS and outputs a drowsiness score (0-1).
 
+## 📋 Requirements
+
+- **Python**: 3.11.13
+- **Dependencies**: See `requirements.txt`
+
 ## 🎯 Overview
 
 This system follows a 7-step approach:
