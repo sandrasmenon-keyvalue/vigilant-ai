@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Vigilant AI - Mobile Camera</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .container {
+            padding: 10px;
+            max-width: 100%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            padding: 15px;
+        }
+
+        .header h1 {
+            font-size: 1.8rem;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+        .camera-container {
+            position: relative;
+            margin-bottom: 20px;
+            border-radius: 15px;
+            overflow: hidden;
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        #videoElement {
+            width: 100%;
+            height: auto;
+            display: block;
+            background: #000;
+        }
+
+        .video-overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 25px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            color: white;
+        }
+
+        .btn-primary:hover, .btn-primary:active {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
+        }
+
+        .btn-danger {
+            background: linear-gradient(45deg, #f44336, #da190b);
+            color: white;
+        }
+
+        .btn-danger:hover, .btn-danger:active {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(244, 67, 54, 0.4);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(45deg, #2196F3, #0b7dda);
+            color: white;
+        }
+
+        .btn-secondary:hover, .btn-secondary:active {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(33, 150, 243, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .status-panel {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            font-size: 0.9rem;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-connected {
+            background: #4CAF50;
+            animation: pulse 2s infinite;
+        }
+
+        .status-disconnected {
+            background: #f44336;
+        }
+
+        .status-streaming {
+            background: #FF9800;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .drowsiness-display {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .drowsiness-score {
+            font-size: 3rem;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+            transition: color 0.3s ease;
+        }
+
+        .score-low { color: #4CAF50; }
+        .score-medium { color: #FFC107; }
+        .score-high { color: #FF9800; }
+        .score-critical { color: #f44336; }
+
+        .alerts-container {
+            max-height: 200px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+
+        .alert {
+            background: rgba(255, 255, 255, 0.1);
+            border-left: 4px solid;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            animation: slideIn 0.3s ease;
+            font-size: 0.9rem;
+        }
+
+        .alert-critical { border-left-color: #f44336; }
+        .alert-high { border-left-color: #FF9800; }
+        .alert-medium { border-left-color: #FFC107; }
+        .alert-low { border-left-color: #4CAF50; }
+
+        @keyframes slideIn {
+            from { transform: translateX(-100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .config-section {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .config-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin: 15px 0;
+            font-size: 0.9rem;
+        }
+
+        .config-item label {
+            flex: 1;
+            font-weight: 600;
+        }
+
+        .config-item input, .config-item select {
+            flex: 2;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+            font-size: 0.9rem;
+        }
+
+        .fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #2196F3, #0b7dda);
+            border: none;
+            color: white;
+            font-size: 1.2rem;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Fullscreen mode */
+        .fullscreen-mode {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #000;
+            z-index: 999;
+        }
+
+        .fullscreen-mode #videoElement {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .fullscreen-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 5px;
+            }
+            
+            .header h1 {
+                font-size: 1.5rem;
+            }
+            
+            .controls {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+            
+            .btn {
+                padding: 10px 15px;
+                font-size: 0.9rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="mainContainer">
+        <div class="header">
+            <h1>📱 Mobile Camera</h1>
+            <p>Vigilant AI Drowsiness Detection</p>
+        </div>
+
+        <!-- Camera Configuration -->
+        <div class="config-section">
+            <h3 style="margin-bottom: 15px;">📡 Connection Settings</h3>
+            <div class="config-item">
+                <label>Server URL:</label>
+                <input type="text" id="serverUrl" value="wss://192.168.6.108:8001" placeholder="wss://your-server-ip:8001">
+                <button onclick="clearStoredUrl()" style="margin-left: 5px; padding: 5px 10px; font-size: 12px; background: rgba(255,255,255,0.2); border: none; color: white; border-radius: 3px; cursor: pointer;">Clear Cache</button>
+            </div>
+            <div class="config-item">
+                <label>Camera:</label>
+                <select id="cameraSelect">
+                    <option value="user">Front Camera</option>
+                    <option value="environment">Back Camera</option>
+                </select>
+            </div>
+            <div class="config-item">
+                <label>Frame Rate:</label>
+                <select id="frameRate">
+                    <option value="5">5 FPS</option>
+                    <option value="10">10 FPS</option>
+                    <option value="15">15 FPS</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Camera Preview -->
+        <div class="camera-container" id="cameraContainer">
+            <video id="videoElement" autoplay muted playsinline></video>
+            <div class="video-overlay">
+                <div id="cameraStatus">📷 Camera: Not started</div>
+                <div id="streamStatus">📡 Stream: Disconnected</div>
+                <div id="frameInfo">🎬 Frames sent: 0</div>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls">
+            <button class="btn btn-primary" id="startCameraBtn" onclick="startCamera()">Start Camera</button>
+            <button class="btn btn-danger" id="stopCameraBtn" onclick="stopCamera()" disabled>Stop Camera</button>
+            <button class="btn btn-secondary" id="connectBtn" onclick="connectToServer()">Connect Server</button>
+            <button class="btn btn-danger" id="disconnectBtn" onclick="disconnectFromServer()" disabled>Disconnect</button>
+        </div>
+
+        <!-- Status Panel -->
+        <div class="status-panel">
+            <h3 style="margin-bottom: 15px;">📊 Status</h3>
+            <div class="status-row">
+                <span>Connection:</span>
+                <span><span class="status-indicator status-disconnected" id="statusIndicator"></span><span id="connectionStatus">Disconnected</span></span>
+            </div>
+            <div class="status-row">
+                <span>Session Time:</span>
+                <span id="sessionTime">00:00</span>
+            </div>
+            <div class="status-row">
+                <span>Frames Sent:</span>
+                <span id="framesSent">0</span>
+            </div>
+            <div class="status-row">
+                <span>Data Sent:</span>
+                <span id="dataSent">0 KB</span>
+            </div>
+        </div>
+
+        <!-- Drowsiness Display -->
+        <div class="drowsiness-display">
+            <div class="drowsiness-score score-low" id="drowsinessScore">0.000</div>
+            <div style="font-size: 1.1rem; margin-top: 10px;" id="alertStatus">😊 Alert & Safe</div>
+        </div>
+
+        <!-- Alerts -->
+        <div class="alerts-container" id="alertsContainer">
+            <!-- Alerts will be added here -->
+        </div>
+    </div>
+
+    <!-- Fullscreen Button -->
+    <button class="fullscreen-btn" id="fullscreenBtn" onclick="toggleFullscreen()" title="Toggle Fullscreen">⛶</button>
+
+    <script>
+        let videoElement = null;
+        let mediaStream = null;
+        let websocket = null;
+        let isStreaming = false;
+        let frameCount = 0;
+        let sessionStartTime = null;
+        let sessionTimer = null;
+        let dataSent = 0;
+        let currentCamera = 'user';
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            videoElement = document.getElementById('videoElement');
+            updateUI();
+            
+            // Try to get stored server URL and convert to WSS if needed
+            let storedUrl = localStorage.getItem('vigilant-ai-server-url');
+            if (storedUrl) {
+                // Force conversion from WS to WSS for security
+                if (storedUrl.startsWith('ws://')) {
+                    storedUrl = storedUrl.replace('ws://', 'wss://');
+                    localStorage.setItem('vigilant-ai-server-url', storedUrl);
+                }
+                document.getElementById('serverUrl').value = storedUrl;
+            }
+            
+            log('Mobile client initialized. Configure server URL and start camera.');
+        });
+
+        // Clear stored URL cache
+        function clearStoredUrl() {
+            localStorage.removeItem('vigilant-ai-server-url');
+            document.getElementById('serverUrl').value = 'wss://192.168.6.108:8001';
+            log('🗑️ Cleared cached server URL');
+            alert('✅ URL cache cleared! Default WSS URL restored.');
+        }
+
+        // Utility functions
+        function log(message) {
+            console.log(`[${new Date().toLocaleTimeString()}] ${message}`);
+        }
+
+        function updateUI() {
+            const isConnected = websocket && websocket.readyState === WebSocket.OPEN;
+            const isCameraActive = mediaStream && mediaStream.active;
+
+            // Update buttons
+            document.getElementById('startCameraBtn').disabled = isCameraActive;
+            document.getElementById('stopCameraBtn').disabled = !isCameraActive;
+            document.getElementById('connectBtn').disabled = isConnected || !isCameraActive;
+            document.getElementById('disconnectBtn').disabled = !isConnected;
+
+            // Update status indicators
+            const indicator = document.getElementById('statusIndicator');
+            const status = document.getElementById('connectionStatus');
+            
+            if (isConnected) {
+                indicator.className = 'status-indicator status-connected';
+                status.textContent = 'Connected';
+            } else {
+                indicator.className = 'status-indicator status-disconnected';
+                status.textContent = 'Disconnected';
+            }
+
+            // Update camera status
+            document.getElementById('cameraStatus').textContent = 
+                `📷 Camera: ${isCameraActive ? 'Active' : 'Not started'}`;
+            
+            document.getElementById('streamStatus').textContent = 
+                `📡 Stream: ${isConnected ? 'Connected' : 'Disconnected'}`;
+        }
+
+        function updateSessionTimer() {
+            if (sessionStartTime) {
+                const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
+                const minutes = Math.floor(elapsed / 60);
+                const seconds = elapsed % 60;
+                document.getElementById('sessionTime').textContent = 
+                    `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            }
+        }
+
+        // Camera functions
+        async function startCamera() {
+            try {
+                log('Starting camera...');
+                
+                // Check if getUserMedia is supported
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error('Camera access not supported. Please use HTTPS or a supported browser.');
+                }
+                
+                currentCamera = document.getElementById('cameraSelect').value;
+                
+                const constraints = {
+                    video: {
+                        facingMode: currentCamera,
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        frameRate: { ideal: 30 }
+                    },
+                    audio: false
+                };
+
+                mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+                videoElement.srcObject = mediaStream;
+                
+                await videoElement.play();
+                
+                log('Camera started successfully');
+                updateUI();
+                
+            } catch (error) {
+                log(`Camera error: ${error.message}`);
+                
+                let errorMessage = error.message;
+                if (error.name === 'NotAllowedError') {
+                    errorMessage = 'Camera permission denied. Please allow camera access and try again.';
+                } else if (error.name === 'NotFoundError') {
+                    errorMessage = 'No camera found. Please check your device has a camera.';
+                } else if (error.message.includes('getUserMedia')) {
+                    errorMessage = 'Camera access requires HTTPS. Please use the HTTPS server or localhost.';
+                }
+                
+                alert(`Camera Error: ${errorMessage}\n\nTips:\n• Use HTTPS server (python https_server.py)\n• Try Chrome or Safari\n• Check camera permissions`);
+            }
+        }
+
+        function stopCamera() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+                videoElement.srcObject = null;
+                log('Camera stopped');
+            }
+            
+            if (websocket) {
+                disconnectFromServer();
+            }
+            
+            updateUI();
+        }
+
+        // Server connection
+        async function connectToServer() {
+            if (!mediaStream) {
+                alert('Please start camera first');
+                return;
+            }
+
+            let serverUrl = document.getElementById('serverUrl').value.trim();
+            if (!serverUrl) {
+                alert('Please enter server URL');
+                return;
+            }
+
+            // Force WSS for security when page is loaded over HTTPS
+            if (window.location.protocol === 'https:' && serverUrl.startsWith('ws://')) {
+                log('🔒 Converting WS to WSS for secure connection...');
+                serverUrl = serverUrl.replace('ws://', 'wss://');
+                document.getElementById('serverUrl').value = serverUrl;
+                alert('⚠️ Converted to WSS (secure) connection for HTTPS compatibility');
+            }
+
+            // Store server URL
+            localStorage.setItem('vigilant-ai-server-url', serverUrl);
+
+            try {
+                log(`Connecting to server: ${serverUrl}`);
+                websocket = new WebSocket(`${serverUrl}/ws/mobile_stream`);
+
+                websocket.onopen = function() {
+                    log('WebSocket connected');
+                    
+                    // Send mobile configuration
+                    const config = {
+                        type: 'mobile_config',
+                        stream_id: 'mobile_' + Math.random().toString(36).substr(2, 9),
+                        device_info: {
+                            userAgent: navigator.userAgent,
+                            screen: {
+                                width: screen.width,
+                                height: screen.height
+                            },
+                            camera: currentCamera
+                        },
+                        frame_rate: parseInt(document.getElementById('frameRate').value)
+                    };
+
+                    websocket.send(JSON.stringify(config));
+                    
+                    // Start streaming frames
+                    startFrameStreaming();
+                    
+                    sessionStartTime = Date.now();
+                    sessionTimer = setInterval(updateSessionTimer, 1000);
+                    
+                    updateUI();
+                };
+
+                websocket.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleServerMessage(data);
+                    } catch (e) {
+                        log(`Error parsing message: ${e.message}`);
+                    }
+                };
+
+                websocket.onclose = function() {
+                    log('WebSocket disconnected');
+                    isStreaming = false;
+                    updateUI();
+                    
+                    if (sessionTimer) {
+                        clearInterval(sessionTimer);
+                        sessionTimer = null;
+                    }
+                };
+
+                websocket.onerror = function(error) {
+                    log(`WebSocket error: ${error}`);
+                    alert('Connection failed. Check server URL and network.');
+                };
+
+            } catch (error) {
+                log(`Connection error: ${error.message}`);
+                alert(`Connection failed: ${error.message}`);
+            }
+        }
+
+        function disconnectFromServer() {
+            if (websocket) {
+                websocket.close();
+                websocket = null;
+            }
+            
+            isStreaming = false;
+            updateUI();
+            
+            if (sessionTimer) {
+                clearInterval(sessionTimer);
+                sessionTimer = null;
+            }
+            
+            log('Disconnected from server');
+        }
+
+        // Frame streaming
+        function startFrameStreaming() {
+            if (isStreaming) return;
+            
+            isStreaming = true;
+            const frameRate = parseInt(document.getElementById('frameRate').value);
+            const interval = 1000 / frameRate; // Convert to milliseconds
+            
+            log(`Starting frame streaming at ${frameRate} FPS`);
+            
+            function captureAndSend() {
+                if (!isStreaming || !websocket || websocket.readyState !== WebSocket.OPEN) {
+                    return;
+                }
+
+                try {
+                    // Create canvas to capture frame
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    
+                    canvas.width = videoElement.videoWidth || 640;
+                    canvas.height = videoElement.videoHeight || 480;
+                    
+                    // Draw current frame
+                    ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+                    
+                    // Convert to base64 JPEG
+                    const imageData = canvas.toDataURL('image/jpeg', 0.8);
+                    const base64Data = imageData.split(',')[1];
+                    
+                    // Send frame data
+                    const frameMessage = {
+                        type: 'frame',
+                        image_base64: base64Data,
+                        timestamp: Date.now() / 1000,
+                        frame_number: frameCount++,
+                        resolution: {
+                            width: canvas.width,
+                            height: canvas.height
+                        }
+                    };
+
+                    websocket.send(JSON.stringify(frameMessage));
+                    
+                    // Update stats
+                    dataSent += base64Data.length;
+                    document.getElementById('framesSent').textContent = frameCount;
+                    document.getElementById('frameInfo').textContent = `🎬 Frames sent: ${frameCount}`;
+                    document.getElementById('dataSent').textContent = `${Math.round(dataSent / 1024)} KB`;
+                    
+                    // Schedule next frame
+                    setTimeout(captureAndSend, interval);
+                    
+                } catch (error) {
+                    log(`Frame capture error: ${error.message}`);
+                    setTimeout(captureAndSend, interval);
+                }
+            }
+            
+            // Start capturing
+            captureAndSend();
+        }
+
+        // Handle server messages
+        function handleServerMessage(data) {
+            if (data.drowsiness_score !== undefined) {
+                // Drowsiness alert
+                updateDrowsinessDisplay(data);
+                addAlert(data);
+                
+            } else if (data.type === 'config_ack') {
+                log('Server configuration acknowledged');
+                
+            } else if (data.error) {
+                log(`Server error: ${data.error}`);
+                alert(`Server error: ${data.error}`);
+                
+            } else if (data.status) {
+                log(`Server status: ${data.status}`);
+            }
+        }
+
+        function updateDrowsinessDisplay(data) {
+            const score = data.drowsiness_score || 0;
+            const scoreElement = document.getElementById('drowsinessScore');
+            const statusElement = document.getElementById('alertStatus');
+            
+            scoreElement.textContent = score.toFixed(3);
+            
+            // Update colors and status
+            if (score < 0.3) {
+                scoreElement.className = 'drowsiness-score score-low';
+                statusElement.innerHTML = '😊 Alert & Safe';
+            } else if (score < 0.5) {
+                scoreElement.className = 'drowsiness-score score-medium';
+                statusElement.innerHTML = '😐 Getting Drowsy';
+            } else if (score < 0.7) {
+                scoreElement.className = 'drowsiness-score score-high';
+                statusElement.innerHTML = '😴 Drowsy - Be Careful!';
+                // Vibrate if supported
+                if (navigator.vibrate) {
+                    navigator.vibrate(200);
+                }
+            } else {
+                scoreElement.className = 'drowsiness-score score-critical';
+                statusElement.innerHTML = '🚨 CRITICAL - STOP DRIVING!';
+                // Strong vibration
+                if (navigator.vibrate) {
+                    navigator.vibrate([200, 100, 200, 100, 200]);
+                }
+            }
+        }
+
+        function addAlert(data) {
+            const alertsContainer = document.getElementById('alertsContainer');
+            const alertLevel = data.alert_level || 'medium';
+            const score = data.drowsiness_score || 0;
+            const timestamp = new Date().toLocaleTimeString();
+
+            const alertElement = document.createElement('div');
+            alertElement.className = `alert alert-${alertLevel}`;
+            
+            let alertIcon;
+            switch (alertLevel) {
+                case 'critical': alertIcon = '🚨'; break;
+                case 'high': alertIcon = '⚠️'; break;
+                case 'medium': alertIcon = '🟡'; break;
+                default: alertIcon = '🟢';
+            }
+
+            alertElement.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <strong>${alertIcon} ${alertLevel.toUpperCase()}</strong>
+                        <div style="font-size: 0.8rem; margin-top: 5px;">
+                            Score: ${score.toFixed(3)} | Confidence: ${(data.confidence || 0).toFixed(3)}
+                        </div>
+                    </div>
+                    <div style="font-size: 0.8rem; text-align: right;">
+                        ${timestamp}
+                    </div>
+                </div>
+            `;
+
+            alertsContainer.insertBefore(alertElement, alertsContainer.firstChild);
+
+            // Keep only last 5 alerts
+            const alerts = alertsContainer.children;
+            if (alerts.length > 5) {
+                alertsContainer.removeChild(alerts[alerts.length - 1]);
+            }
+        }
+
+        // Fullscreen functionality
+        function toggleFullscreen() {
+            const container = document.getElementById('mainContainer');
+            const cameraContainer = document.getElementById('cameraContainer');
+            
+            if (!document.fullscreenElement) {
+                // Enter fullscreen
+                if (cameraContainer.requestFullscreen) {
+                    cameraContainer.requestFullscreen();
+                } else if (cameraContainer.webkitRequestFullscreen) {
+                    cameraContainer.webkitRequestFullscreen();
+                } else if (cameraContainer.msRequestFullscreen) {
+                    cameraContainer.msRequestFullscreen();
+                }
+                
+                cameraContainer.classList.add('fullscreen-mode');
+                document.getElementById('fullscreenBtn').innerHTML = '⤓';
+                
+            } else {
+                // Exit fullscreen
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                } else if (document.msExitFullscreen) {
+                    document.msExitFullscreen();
+                }
+                
+                cameraContainer.classList.remove('fullscreen-mode');
+                document.getElementById('fullscreenBtn').innerHTML = '⛶';
+            }
+        }
+
+        // Handle orientation changes
+        window.addEventListener('orientationchange', function() {
+            setTimeout(function() {
+                if (videoElement && mediaStream) {
+                    // Refresh video element size
+                    videoElement.style.height = 'auto';
+                    videoElement.style.width = '100%';
+                }
+            }, 100);
+        });
+
+        // Prevent screen sleep (if supported)
+        let wakeLock = null;
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    log('Screen wake lock activated');
+                }
+            } catch (err) {
+                log(`Wake lock error: ${err.message}`);
+            }
+        }
+
+        // Request wake lock when starting camera
+        document.getElementById('startCameraBtn').addEventListener('click', requestWakeLock);
+
+        // Release wake lock when leaving page
+        document.addEventListener('visibilitychange', function() {
+            if (wakeLock !== null && document.visibilityState === 'visible') {
+                requestWakeLock();
+            }
+        });
+    </script>
+</body>
+</html>
