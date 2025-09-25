@@ -6,9 +6,15 @@ Combines WebSocket client with vitals processing for real-time HR and SpO2 analy
 import asyncio
 import logging
 import time
+import sys
+import os
 from typing import Dict, Any, Optional, Callable
-from vitals_processor import VitalsProcessor
-from websocket_client import VitalsWebSocketClient
+
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from vitals_processing.vitals_processor import VitalsProcessor
+from websocket.websocket_client import VitalsWebSocketClient
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +27,9 @@ class VitalsWebSocketProcessor:
     
     def __init__(self, 
                  websocket_uri: str = "ws://localhost:8765",
+                 api_key: Optional[str] = None,
+                 auth_token: Optional[str] = None,
+                 headers: Optional[Dict[str, str]] = None,
                  age: int = 35,
                  health_conditions: Optional[Dict[str, int]] = None,
                  model_path: str = "trained_models/vital-training/vitals_hv_model_xgboost.pkl",
@@ -30,6 +39,9 @@ class VitalsWebSocketProcessor:
         
         Args:
             websocket_uri: WebSocket server URI
+            api_key: API key for authentication (can also be set via VITALS_API_KEY env var)
+            auth_token: Bearer token for authentication (can also be set via VITALS_AUTH_TOKEN env var)
+            headers: Additional headers to send with connection
             age: Patient age for vitals processing
             health_conditions: Health conditions dict
             model_path: Path to trained vitals model
@@ -41,8 +53,13 @@ class VitalsWebSocketProcessor:
         # Initialize vitals processor
         self.vitals_processor = VitalsProcessor(model_path, scaler_path)
         
-        # Initialize WebSocket client
-        self.websocket_client = VitalsWebSocketClient(websocket_uri)
+        # Initialize WebSocket client with authentication
+        self.websocket_client = VitalsWebSocketClient(
+            uri=websocket_uri,
+            api_key=api_key,
+            auth_token=auth_token,
+            headers=headers
+        )
         
         # Set up callbacks
         self.websocket_client.set_data_callback(self._process_vitals_data)
@@ -115,7 +132,8 @@ class VitalsWebSocketProcessor:
         Process incoming vitals data from WebSocket.
         
         Args:
-            vitals_data: Dictionary with timestamp, hr, spo2, quality
+            vitals_data: Dictionary with timestamp, hr, spo2, quality, temperature, co2_level
+                       (converted from WebSocket payload with heartbeatBpm, spo2, temperatureC, co2Level, timestampMs)
         """
         self.stats['total_messages'] += 1
         self.stats['last_data_time'] = time.time()
@@ -261,6 +279,7 @@ def example_raw_vitals_callback(vitals_data: Dict[str, Any]):
     
     Args:
         vitals_data: Dictionary containing timestamp, hr, spo2, quality, temperature, co2_level
+                   (converted from WebSocket payload with heartbeatBpm, spo2, temperatureC, co2Level, timestampMs)
     """
     timestamp = vitals_data['timestamp']
     hr = vitals_data['hr']

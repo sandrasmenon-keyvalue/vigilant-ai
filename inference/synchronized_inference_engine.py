@@ -42,6 +42,7 @@ class SynchronizedResult:
     hv_data: Any
     sync_tolerance: float
     processing_time: float
+    mode: str = "synchronized"  # "synchronized", "dv_only", "hv_only"
 
 
 class SynchronizedInferenceEngine:
@@ -53,6 +54,7 @@ class SynchronizedInferenceEngine:
     def __init__(self, 
                  sync_tolerance: float = 0.1,
                  max_buffer_size: int = 1000,
+                 sync_timeout: float = 2.0,
                  health_score_callback: Optional[Callable] = None,
                  alert_callback: Optional[Callable] = None,
                  enable_logging: bool = True):
@@ -62,12 +64,14 @@ class SynchronizedInferenceEngine:
         Args:
             sync_tolerance: Maximum time difference for synchronization (seconds)
             max_buffer_size: Maximum number of data points to buffer
+            sync_timeout: Maximum time to wait for missing data type (seconds)
             health_score_callback: Optional callback function for health scores
             alert_callback: Optional callback function for alerts
             enable_logging: Enable/disable logging
         """
         self.sync_tolerance = sync_tolerance
         self.max_buffer_size = max_buffer_size
+        self.sync_timeout = sync_timeout
         self.health_score_callback = health_score_callback
         self.alert_callback = alert_callback
         self.enable_logging = enable_logging
@@ -75,6 +79,10 @@ class SynchronizedInferenceEngine:
         # Data buffers for DV and HV data
         self.dv_buffer = deque(maxlen=max_buffer_size)
         self.hv_buffer = deque(maxlen=max_buffer_size)
+        
+        # Timeout tracking for single data type processing
+        self.pending_dv_timeout = {}  # timestamp -> timeout_time
+        self.pending_hv_timeout = {}  # timestamp -> timeout_time
         
         # Thread safety
         self.lock = threading.Lock()
@@ -127,7 +135,7 @@ class SynchronizedInferenceEngine:
         """
         Receive DV (vision) data with timestamp.
         
-        TODO: DV DATA (dv,tk) ARRIVES HERE FOR SYNCHRONOUS PROCESSING
+        DV DATA (drowsiness_score, timestamp) ARRIVES HERE FOR SYNCHRONOUS PROCESSING
         This is where DV data with timestamp gets buffered and synchronized with HV data.
         
         Args:
@@ -152,10 +160,12 @@ class SynchronizedInferenceEngine:
                 self.dv_buffer.append(data_point)
                 self.stats['total_dv_received'] += 1
                 
-                if self.enable_logging:
-                    logger.info(f"📸 Received DV data at timestamp {timestamp:.3f}")
+                # Set timeout for this DV data point
+                self.pending_dv_timeout[timestamp] = time.time() + self.sync_timeout
                 
-                # TODO: DV data (dv,tk) gets synchronized with HV data (hv,tn) here
+                if self.enable_logging:
+                    logger.info(f"📸 Received DV data at timestamp {timestamp:.3f}, waiting {self.sync_timeout}s for HV data")
+                
                 # Try to synchronize with HV data
                 self._try_synchronize()
                 
@@ -165,6 +175,44 @@ class SynchronizedInferenceEngine:
             self.stats['processing_errors'] += 1
             logger.error(f"Error receiving DV data: {e}")
             return False
+    
+    def receive_dv_from_inference_api(self, drowsiness_score: float, timestamp: float, 
+                                    features: Dict[str, float] = None, 
+                                    alert_level: str = None, 
+                                    confidence: float = None,
+                                    frame_id: str = None) -> bool:
+        """
+        Receive DV data from inference_api.py process_frame_inference result.
+        
+        Args:
+            drowsiness_score: Drowsiness score from vision processing (0-1)
+            timestamp: Frame timestamp
+            features: Extracted features from vision processing
+            alert_level: Alert level from vision processing
+            confidence: Prediction confidence
+            frame_id: Frame identifier
+            
+        Returns:
+            True if data was received successfully, False otherwise
+        """
+        # Create DV data structure compatible with existing system
+        dv_data = {
+            'drowsiness_score': drowsiness_score,
+            'features': features or {},
+            'alert_level': alert_level or 'low',
+            'confidence': confidence or 0.0,
+            'frame_id': frame_id,
+            'source': 'inference_api'
+        }
+        
+        # Use existing receive_dv_data method
+        success = self.receive_dv_data(dv_data, timestamp, source="inference_api")
+        
+        if success and self.enable_logging:
+            logger.info(f"📹 DV data from inference_api: drowsiness_score={drowsiness_score:.3f}, "
+                       f"alert_level={alert_level}, confidence={confidence:.3f}")
+        
+        return success
     
     def receive_hv_data(self, hv_data: Any, timestamp: float, source: str = "vitals") -> bool:
         """
@@ -191,8 +239,11 @@ class SynchronizedInferenceEngine:
                 self.hv_buffer.append(data_point)
                 self.stats['total_hv_received'] += 1
                 
+                # Set timeout for this HV data point
+                self.pending_hv_timeout[timestamp] = time.time() + self.sync_timeout
+                
                 if self.enable_logging:
-                    logger.info(f"📊 Received HV data at timestamp {timestamp:.3f}")
+                    logger.info(f"📊 Received HV data at timestamp {timestamp:.3f}, waiting {self.sync_timeout}s for DV data")
                 
                 # Try to synchronize with DV data
                 self._try_synchronize()
@@ -205,17 +256,20 @@ class SynchronizedInferenceEngine:
             return False
     
     def _try_synchronize(self):
-        """Try to synchronize DV and HV data by timestamp."""
-        if len(self.dv_buffer) == 0 or len(self.hv_buffer) == 0:
-            return
+        """Try to synchronize DV and HV data by timestamp with timeout-based fallback."""
+        current_time = time.time()
         
-        # Find matching pairs within sync tolerance
+        # First, check for timed-out data points and process them individually
+        self._process_timed_out_data(current_time)
+        
+        # Then try to find synchronized pairs
         synchronized_pairs = []
         
         # Create copies to avoid modifying buffers during iteration
         dv_list = list(self.dv_buffer)
         hv_list = list(self.hv_buffer)
         
+        # Find matching pairs within sync tolerance
         for dv_point in dv_list:
             for hv_point in hv_list:
                 time_diff = abs(dv_point.timestamp - hv_point.timestamp)
@@ -244,6 +298,94 @@ class SynchronizedInferenceEngine:
         
         # Remove processed data points from buffers
         self._cleanup_processed_data(synchronized_pairs)
+    
+    def _process_timed_out_data(self, current_time: float):
+        """Process data points that have timed out waiting for synchronization."""
+        # Check for timed-out DV data points
+        timed_out_dv = []
+        for timestamp, timeout_time in list(self.pending_dv_timeout.items()):
+            if current_time >= timeout_time:
+                timed_out_dv.append(timestamp)
+                del self.pending_dv_timeout[timestamp]
+        
+        # Process timed-out DV data with default HV
+        for timestamp in timed_out_dv:
+            # Find the DV data point
+            dv_point = None
+            for point in self.dv_buffer:
+                if abs(point.timestamp - timestamp) < 0.001:  # Find matching timestamp
+                    dv_point = point
+                    break
+            
+            if dv_point:
+                # Create default HV data point
+                default_hv_point = DataPoint(
+                    timestamp=dv_point.timestamp,
+                    data=0.0,  # Default HV score when no vitals
+                    data_type='hv',
+                    source='default',
+                    received_at=time.time()
+                )
+                
+                if self.enable_logging:
+                    logger.info(f"⏰ DV data timed out, processing with default HV: DV={dv_point.data}")
+                
+                # Process the timed-out data
+                self._process_single_data_type(dv_point, default_hv_point, "dv_only")
+        
+        # Check for timed-out HV data points
+        timed_out_hv = []
+        for timestamp, timeout_time in list(self.pending_hv_timeout.items()):
+            if current_time >= timeout_time:
+                timed_out_hv.append(timestamp)
+                del self.pending_hv_timeout[timestamp]
+        
+        # Process timed-out HV data with default DV
+        for timestamp in timed_out_hv:
+            # Find the HV data point
+            hv_point = None
+            for point in self.hv_buffer:
+                if abs(point.timestamp - timestamp) < 0.001:  # Find matching timestamp
+                    hv_point = point
+                    break
+            
+            if hv_point:
+                # Create default DV data point
+                default_dv_point = DataPoint(
+                    timestamp=hv_point.timestamp,
+                    data=0.0,  # Default DV score when no video
+                    data_type='dv',
+                    source='default',
+                    received_at=time.time()
+                )
+                
+                if self.enable_logging:
+                    logger.info(f"⏰ HV data timed out, processing with default DV: HV={hv_point.data}")
+                
+                # Process the timed-out data
+                self._process_single_data_type(default_dv_point, hv_point, "hv_only")
+    
+    def _process_single_data_type(self, dv_point: DataPoint, hv_point: DataPoint, mode: str):
+        """Process data when only one type is available after timeout."""
+        try:
+            result = self._process_synchronized_data(dv_point, hv_point, 0.0)
+            if result:
+                self.results_history.append(result)
+                self.stats['total_synchronized'] += 1
+                
+                # Add mode information to result
+                result.mode = mode
+                
+                # Call health score callback if provided
+                if self.health_score_callback:
+                    try:
+                        self.health_score_callback(result)
+                    except Exception as e:
+                        logger.error(f"Error in health score callback: {e}")
+            
+        except Exception as e:
+            self.stats['processing_errors'] += 1
+            logger.error(f"Error processing single data type ({mode}): {e}")
     
     def _process_synchronized_data(self, dv_point: DataPoint, hv_point: DataPoint, time_diff: float) -> Optional[SynchronizedResult]:
         """
@@ -279,7 +421,8 @@ class SynchronizedInferenceEngine:
                 dv_data=dv_point.data,
                 hv_data=hv_point.data,
                 sync_tolerance=time_diff,
-                processing_time=processing_time
+                processing_time=processing_time,
+                mode="synchronized"
             )
             
             self.stats['total_health_scores'] += 1
@@ -312,7 +455,10 @@ class SynchronizedInferenceEngine:
         
         # If dv_data is a dictionary with score
         if isinstance(dv_data, dict):
-            if 'dv_score' in dv_data:
+            # Handle drowsiness_score from inference_api
+            if 'drowsiness_score' in dv_data:
+                return float(dv_data['drowsiness_score'])
+            elif 'dv_score' in dv_data:
                 return float(dv_data['dv_score'])
             elif 'score' in dv_data:
                 return float(dv_data['score'])

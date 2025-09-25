@@ -14,6 +14,13 @@ def calculate_health_score(dv: float, hv: float) -> float:
     Returns:
         Health score (0-1)
     """
+    # If DV is 0 (no video stream), use HV-only scoring
+    if dv == 0.0:
+        # When no video is available, focus entirely on vitals
+        # Scale HV score to 0-1 range for health score
+        return hv
+    
+    # Normal case: combine DV and HV
     return 0.6 * dv + 0.4 * hv
 
 
