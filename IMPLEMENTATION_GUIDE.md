@@ -4,15 +4,27 @@
 
 This implementation follows your **7-step plan** exactly:
 
-1. **Data Preparation** → Extract frames at 5 FPS
+1. **Data Preparation** → Extract frames at 5 FPS (training only)
 2. **Face Detection** → MediaPipe landmarks (eyes, mouth, head)
 3. **Feature Calculation** → EAR, MAR, blink frequency, head nods
 4. **Window Processing** → 5-second sliding windows with aggregation
 5. **Model Training** → XGBoost on extracted features
-6. **Real-time Detection** → Live video processing
+6. **Real-time Detection** → Process images/frames at 5 FPS
 7. **Score Smoothing** → Temporal smoothing for stable output
 
 **End Result**: Every second, output a **Drowsiness Score (0-1)**
+
+### 🔄 Training vs Inference Workflow
+
+**Training Phase:**
+- Input: Video files (MP4, AVI, etc.)
+- Process: Extract frames at 5 FPS → Extract features → Train model
+- Output: Trained model files
+
+**Inference Phase:**
+- Input: Images/frames at 5 FPS (directly)
+- Process: Extract features → Predict → Smooth scores
+- Output: Drowsiness score (0-1) every second
 
 ---
 
@@ -59,15 +71,17 @@ vigilant-ai/
 
 ## 🔧 Step-by-Step Implementation
 
-### Step 1: Data Preparation (`data_preparation.py`)
+### Step 1: Data Preparation (`data_preparation.py`) - Training Only
 - **Input**: Video files (MP4, AVI, etc.)
-- **Process**: Extract frames at 5 FPS
+- **Process**: Extract frames at 5 FPS for training data
 - **Output**: Frame images + metadata CSV
 
 ```python
 extractor = FrameExtractor(target_fps=5)
 frame_df = extractor.extract_frames_from_dataset("videos/", "frames/")
 ```
+
+**Note**: This step is only used during training. For inference, you provide images/frames directly.
 
 ### Step 2: Face Detection (`face_detection.py`)
 - **Input**: Frame images
@@ -123,13 +137,15 @@ results = trainer.train_model(X, y, feature_names)
 ```
 
 ### Step 6: Real-time Detection (`realtime_detection.py`)
-- **Input**: Live video stream
+- **Input**: Images/frames at 5 FPS (from camera, video file, or image sequence)
 - **Process**: Full pipeline at 5 FPS
 - **Output**: Drowsiness score every second
 
 ```python
 detector = RealTimeDrowsinessDetector(model_path, scaler_path)
-detector.process_video_stream(video_source=0)
+detector.process_video_stream(video_source=0)  # Webcam
+# OR
+detector.process_video_file("input_video.mp4")  # Video file
 ```
 
 ### Step 7: Score Smoothing (`realtime_detection.py`)
