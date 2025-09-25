@@ -50,6 +50,22 @@ class VitalsProcessor:
             'smoker': 0
         }
         
+        # Environmental conditions thresholds
+        self.environmental_thresholds = {
+            'temperature_celsius': {
+                'min_safe': 18.0,    # 18°C minimum safe temperature
+                'max_safe': 25.0,    # 25°C maximum safe temperature
+                'critical_high': 30.0,  # 30°C critical high
+                'critical_low': 10.0    # 10°C critical low
+            },
+            'co2_ppm': {
+                'normal': 400,       # Normal outdoor CO2 level
+                'acceptable': 1000,  # Acceptable indoor level
+                'concerning': 2000,  # Concerning level
+                'dangerous': 5000    # Dangerous level
+            }
+        }
+        
         # Load the model
         self._load_model()
     
@@ -96,8 +112,94 @@ class VitalsProcessor:
         
         logger.info(f"Health conditions updated: {self.default_health_conditions}")
     
+    def set_environmental_thresholds(self, temperature_thresholds: Optional[Dict[str, float]] = None,
+                                   co2_thresholds: Optional[Dict[str, int]] = None):
+        """
+        Set environmental condition thresholds.
+        
+        Args:
+            temperature_thresholds: Temperature thresholds in Celsius
+            co2_thresholds: CO2 thresholds in PPM
+        """
+        if temperature_thresholds:
+            self.environmental_thresholds['temperature_celsius'].update(temperature_thresholds)
+        
+        if co2_thresholds:
+            self.environmental_thresholds['co2_ppm'].update(co2_thresholds)
+        
+        logger.info(f"Environmental thresholds updated: {self.environmental_thresholds}")
+    
+    def check_environmental_conditions(self, temperature: float, co2_level: float) -> Dict[str, Any]:
+        """
+        Check environmental conditions and return status.
+        
+        Args:
+            temperature: Ambient temperature in Celsius
+            co2_level: CO2 level in PPM
+            
+        Returns:
+            Dictionary with environmental status and alerts
+        """
+        temp_thresholds = self.environmental_thresholds['temperature_celsius']
+        co2_thresholds = self.environmental_thresholds['co2_ppm']
+        
+        # Check temperature
+        temp_status = "normal"
+        temp_alert = None
+        
+        if temperature < temp_thresholds['critical_low']:
+            temp_status = "critical_low"
+            temp_alert = f"Critical low temperature: {temperature}°C"
+        elif temperature < temp_thresholds['min_safe']:
+            temp_status = "low"
+            temp_alert = f"Low temperature: {temperature}°C"
+        elif temperature > temp_thresholds['critical_high']:
+            temp_status = "critical_high"
+            temp_alert = f"Critical high temperature: {temperature}°C"
+        elif temperature > temp_thresholds['max_safe']:
+            temp_status = "high"
+            temp_alert = f"High temperature: {temperature}°C"
+        
+        # Check CO2 level
+        co2_status = "normal"
+        co2_alert = None
+        
+        if co2_level > co2_thresholds['dangerous']:
+            co2_status = "dangerous"
+            co2_alert = f"Dangerous CO2 level: {co2_level} PPM"
+        elif co2_level > co2_thresholds['concerning']:
+            co2_status = "concerning"
+            co2_alert = f"Concerning CO2 level: {co2_level} PPM"
+        elif co2_level > co2_thresholds['acceptable']:
+            co2_status = "elevated"
+            co2_alert = f"Elevated CO2 level: {co2_level} PPM"
+        
+        # Overall environmental risk
+        environmental_risk = "low"
+        if temp_status in ["critical_low", "critical_high"] or co2_status == "dangerous":
+            environmental_risk = "critical"
+        elif temp_status in ["low", "high"] or co2_status in ["concerning", "elevated"]:
+            environmental_risk = "moderate"
+        
+        return {
+            'temperature': {
+                'value': temperature,
+                'status': temp_status,
+                'alert': temp_alert
+            },
+            'co2_level': {
+                'value': co2_level,
+                'status': co2_status,
+                'alert': co2_alert
+            },
+            'overall_risk': environmental_risk,
+            'alerts': [alert for alert in [temp_alert, co2_alert] if alert is not None]
+        }
+    
     def process_vitals(self, hr: float, spo2: float, age: int, 
-                      health_conditions: Optional[Dict[str, int]] = None) -> Dict[str, Any]:
+                      health_conditions: Optional[Dict[str, int]] = None,
+                      temperature: Optional[float] = None,
+                      co2_level: Optional[float] = None) -> Dict[str, Any]:
         """
         Process vitals data and predict HV score.
         
@@ -106,9 +208,11 @@ class VitalsProcessor:
             spo2: Blood oxygen saturation percentage
             age: Age in years
             health_conditions: Optional health conditions dict (uses defaults if not provided)
+            temperature: Optional ambient temperature in Celsius
+            co2_level: Optional CO2 level in PPM
             
         Returns:
-            Dictionary with HV prediction and interpretation
+            Dictionary with HV prediction, interpretation, and environmental conditions
         """
         if not self.is_loaded:
             raise RuntimeError("Model not loaded. Cannot process vitals.")
@@ -141,6 +245,11 @@ class VitalsProcessor:
             # Get interpretation
             interpretation = self.inference_engine.interpret_hv_score(hv_score)
             
+            # Check environmental conditions if provided
+            environmental_data = None
+            if temperature is not None and co2_level is not None:
+                environmental_data = self.check_environmental_conditions(temperature, co2_level)
+            
             # Prepare result
             result = {
                 'input_data': vitals_data,
@@ -148,7 +257,8 @@ class VitalsProcessor:
                 'risk_level': interpretation['risk_level'],
                 'interpretation': interpretation['interpretation'],
                 'recommendations': interpretation['recommendations'],
-                'timestamp': time.time()
+                'timestamp': time.time(),
+                'environmental_conditions': environmental_data
             }
             
             logger.info(f"HV prediction: {hv_score:.3f} ({interpretation['risk_level']} risk)")
@@ -166,20 +276,22 @@ class VitalsProcessor:
         Process vitals data from WebSocket and predict HV score.
         
         Args:
-            vitals_data: WebSocket vitals data with 'hr' and 'spo2' keys
+            vitals_data: WebSocket vitals data with 'hr', 'spo2', 'temperature', 'co2_level' keys
             age: Age in years (default: 35)
             health_conditions: Optional health conditions dict
             
         Returns:
-            Dictionary with HV prediction and interpretation
+            Dictionary with HV prediction, interpretation, and environmental conditions
         """
         hr = vitals_data.get('hr', 0)
         spo2 = vitals_data.get('spo2', 0)
+        temperature = vitals_data.get('temperature', None)
+        co2_level = vitals_data.get('co2_level', None)
         
         if hr <= 0 or spo2 <= 0:
             raise ValueError(f"Invalid vitals data: HR={hr}, SpO2={spo2}")
         
-        return self.process_vitals(hr, spo2, age, health_conditions)
+        return self.process_vitals(hr, spo2, age, health_conditions, temperature, co2_level)
     
     def get_model_info(self) -> Dict[str, Any]:
         """Get information about the loaded model."""

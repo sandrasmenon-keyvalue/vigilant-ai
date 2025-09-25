@@ -33,17 +33,29 @@ Your backend should send JSON messages with this structure:
   "timestamp": 1703123456.789,
   "hr": 75.5,
   "spo2": 98.2,
-  "quality": "good"
+  "quality": "good",
+  "temperature": 22.5,
+  "co2_level": 450
 }
 ```
+
+### Field Descriptions:
+- `timestamp`: Unix timestamp (optional, defaults to current time)
+- `hr`: Heart rate in BPM (required)
+- `spo2`: Blood oxygen saturation percentage (required)
+- `quality`: Data quality indicator (optional, default: "unknown")
+- `temperature`: Ambient car temperature in Celsius (optional)
+- `co2_level`: CO2 level in PPM (optional)
 
 ## Features
 
 - **Automatic Reconnection**: Handles connection drops and reconnects automatically
 - **Real-time Processing**: Processes each HR/SpO2 reading for HV predictions
+- **Environmental Monitoring**: Monitors ambient temperature and CO2 levels with automatic alerts
 - **Configurable Callbacks**: Set custom handlers for data, predictions, and connection status
 - **Health Conditions**: Configure patient health conditions for accurate predictions
 - **Statistics Tracking**: Monitor message counts and processing statistics
+- **Environmental Alerts**: Automatic alerts for dangerous temperature or CO2 levels
 
 ## Usage Examples
 
@@ -81,7 +93,24 @@ def my_connection_handler(is_connected):
 - **WebSocket URI**: Default `ws://localhost:8765`
 - **Patient Age**: Default 35 years
 - **Health Conditions**: Configurable dictionary with conditions
+- **Environmental Thresholds**: Configurable temperature and CO2 level thresholds
 - **Reconnection**: Automatic with configurable intervals
+
+### Environmental Thresholds
+
+#### Temperature (Celsius):
+- **Critical Low**: < 10°C
+- **Low**: 10-18°C
+- **Normal**: 18-25°C
+- **High**: 25-30°C
+- **Critical High**: > 30°C
+
+#### CO2 Levels (PPM):
+- **Normal**: < 400 PPM
+- **Acceptable**: 400-1000 PPM
+- **Elevated**: 1000-2000 PPM
+- **Concerning**: 2000-5000 PPM
+- **Dangerous**: > 5000 PPM
 
 ## Integration with Existing Code
 

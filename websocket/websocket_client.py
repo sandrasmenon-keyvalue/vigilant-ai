@@ -131,8 +131,16 @@ class VitalsWebSocketClient:
                 'timestamp': data.get('timestamp', time.time()),
                 'hr': float(data.get('hr', 0)),
                 'spo2': float(data.get('spo2', 0)),
-                'quality': data.get('quality', 'unknown')
+                'quality': data.get('quality', 'unknown'),
+                'temperature': data.get('temperature', None),  # Ambient temperature in Celsius
+                'co2_level': data.get('co2_level', None)      # CO2 level in PPM
             }
+            
+            # Convert temperature and CO2 to float if provided
+            if vitals_data['temperature'] is not None:
+                vitals_data['temperature'] = float(vitals_data['temperature'])
+            if vitals_data['co2_level'] is not None:
+                vitals_data['co2_level'] = float(vitals_data['co2_level'])
             
             # Validate data
             if vitals_data['hr'] <= 0 or vitals_data['spo2'] <= 0:
@@ -140,7 +148,13 @@ class VitalsWebSocketClient:
                 return
             
             # Log received data
-            logger.debug(f"Received vitals: HR={vitals_data['hr']} BPM, SpO2={vitals_data['spo2']}%")
+            env_info = ""
+            if vitals_data['temperature'] is not None:
+                env_info += f", Temp={vitals_data['temperature']}°C"
+            if vitals_data['co2_level'] is not None:
+                env_info += f", CO2={vitals_data['co2_level']} PPM"
+            
+            logger.debug(f"Received vitals: HR={vitals_data['hr']} BPM, SpO2={vitals_data['spo2']}%{env_info}")
             
             # Call data callback if set
             if self.data_callback:
@@ -201,12 +215,14 @@ async def example_vitals_callback(vitals_data: Dict[str, Any]):
     Example callback function for processing vitals data.
     
     Args:
-        vitals_data: Dictionary containing timestamp, hr, spo2, quality
+        vitals_data: Dictionary containing timestamp, hr, spo2, quality, temperature, co2_level
     """
     timestamp = vitals_data['timestamp']
     hr = vitals_data['hr']
     spo2 = vitals_data['spo2']
     quality = vitals_data['quality']
+    temperature = vitals_data.get('temperature')
+    co2_level = vitals_data.get('co2_level')
     
     # Format timestamp for display
     time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(timestamp))
@@ -216,6 +232,12 @@ async def example_vitals_callback(vitals_data: Dict[str, Any]):
     print(f"   HR: {hr} BPM")
     print(f"   SpO2: {spo2}%")
     print(f"   Quality: {quality}")
+    
+    if temperature is not None:
+        print(f"   Temperature: {temperature}°C")
+    if co2_level is not None:
+        print(f"   CO2 Level: {co2_level} PPM")
+    
     print("-" * 40)
 
 

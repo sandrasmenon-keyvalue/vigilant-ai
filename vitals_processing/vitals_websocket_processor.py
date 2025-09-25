@@ -238,6 +238,20 @@ def example_hv_prediction_callback(hv_result: Dict[str, Any]):
     print(f"   HV Score: {hv_score:.3f}")
     print(f"   Risk Level: {risk_level}")
     print(f"   Interpretation: {hv_result['interpretation']}")
+    
+    # Display environmental conditions if available
+    if hv_result.get('environmental_conditions'):
+        env = hv_result['environmental_conditions']
+        print(f"🌡️ Environmental Conditions:")
+        print(f"   Temperature: {env['temperature']['value']}°C ({env['temperature']['status']})")
+        print(f"   CO2 Level: {env['co2_level']['value']} PPM ({env['co2_level']['status']})")
+        print(f"   Overall Risk: {env['overall_risk']}")
+        
+        if env['alerts']:
+            print(f"⚠️ Environmental Alerts:")
+            for alert in env['alerts']:
+                print(f"   - {alert}")
+    
     print("-" * 50)
 
 
@@ -246,15 +260,23 @@ def example_raw_vitals_callback(vitals_data: Dict[str, Any]):
     Example callback for raw vitals data.
     
     Args:
-        vitals_data: Dictionary containing timestamp, hr, spo2, quality
+        vitals_data: Dictionary containing timestamp, hr, spo2, quality, temperature, co2_level
     """
     timestamp = vitals_data['timestamp']
     hr = vitals_data['hr']
     spo2 = vitals_data['spo2']
     quality = vitals_data['quality']
+    temperature = vitals_data.get('temperature')
+    co2_level = vitals_data.get('co2_level')
     
     time_str = time.strftime("%H:%M:%S", time.localtime(timestamp))
-    print(f"📊 Raw Vitals [{time_str}]: HR={hr} BPM, SpO2={spo2}%, Quality={quality}")
+    env_info = ""
+    if temperature is not None:
+        env_info += f", Temp={temperature}°C"
+    if co2_level is not None:
+        env_info += f", CO2={co2_level} PPM"
+    
+    print(f"📊 Raw Vitals [{time_str}]: HR={hr} BPM, SpO2={spo2}%, Quality={quality}{env_info}")
 
 
 def example_connection_status_callback(is_connected: bool):

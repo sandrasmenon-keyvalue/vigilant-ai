@@ -380,6 +380,9 @@ class SynchronizedInferenceEngine:
             # Rule 4: Check SpO2 violations with 30s counter
             if spo2 is not None:
                 self._check_spo2_violations(spo2, result.timestamp)
+            
+            # Rule 5: Check environmental conditions
+            self._check_environmental_conditions(result)
                 
         except Exception as e:
             logger.error(f"Error in rule checks: {e}")
@@ -411,6 +414,47 @@ class SynchronizedInferenceEngine:
                 spo2 = None
         
         return hr, spo2
+    
+    def _check_environmental_conditions(self, result: SynchronizedResult):
+        """
+        Check environmental conditions and trigger alerts if necessary.
+        
+        Args:
+            result: SynchronizedResult containing environmental data
+        """
+        try:
+            # Check if environmental conditions are available
+            if not hasattr(result, 'environmental_conditions') or result.environmental_conditions is None:
+                return
+            
+            env_conditions = result.environmental_conditions
+            
+            # Check for critical environmental conditions
+            if env_conditions.get('overall_risk') == 'critical':
+                self._trigger_alert("environmental_critical", 
+                                  "Critical environmental conditions detected. Immediate attention required.")
+                self.stats['environmental_alerts'] = self.stats.get('environmental_alerts', 0) + 1
+            
+            # Check for environmental alerts
+            alerts = env_conditions.get('alerts', [])
+            for alert in alerts:
+                if 'temperature' in alert.lower():
+                    if 'critical' in alert.lower():
+                        self._trigger_alert("temperature_critical", alert)
+                    else:
+                        self._trigger_alert("temperature_warning", alert)
+                elif 'co2' in alert.lower():
+                    if 'dangerous' in alert.lower():
+                        self._trigger_alert("co2_dangerous", alert)
+                    elif 'concerning' in alert.lower():
+                        self._trigger_alert("co2_concerning", alert)
+                    else:
+                        self._trigger_alert("co2_elevated", alert)
+                
+                self.stats['environmental_alerts'] = self.stats.get('environmental_alerts', 0) + 1
+                
+        except Exception as e:
+            logger.error(f"Error checking environmental conditions: {e}")
     
     def _check_hr_violations(self, hr: float, timestamp: float):
         """
