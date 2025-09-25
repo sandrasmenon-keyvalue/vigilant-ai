@@ -18,23 +18,25 @@ from dateutil import parser
 
 from langchain_groq import ChatGroq
 from langchain.schema import HumanMessage
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
+from typing import List
 
 load_dotenv()
 
 class BreakPredictionResponse(BaseModel):
     """Pydantic model for break prediction response validation."""
-    take_a_break: bool = Field(description="Whether the user should take a break or not")
-    reason: str = Field(description="Reason for the above response")
-    duration: float = Field(description="Seconds to take a break, 0 if no need to take a break")
+    break_times: List[str] = Field(description="List of exactly 5 ISO timestamp strings for when breaks should be taken")
     
-    @validator('duration')
-    def validate_duration(cls, v, values):
-        """Ensure duration is 0 when no break is needed."""
-        if not values.get('take_a_break', False) and v > 0:
-            raise ValueError("Duration should be 0 when no break is needed")
-        if values.get('take_a_break', False) and v <= 0:
-            raise ValueError("Duration should be > 0 when break is needed")
+    @field_validator('break_times')
+    @classmethod
+    def validate_break_times(cls, v):
+        """Ensure we have exactly 5 break times as ISO strings."""
+        if len(v) != 5:
+            raise ValueError("Must provide exactly 5 break times")
+        
+        for i, break_time in enumerate(v):
+            if not isinstance(break_time, str):
+                raise ValueError(f"Break time {i+1} must be a string (ISO timestamp)")
         return v
 
 
@@ -140,8 +142,15 @@ class BreakPredictionService:
         }
         return json.dumps(conditions)
     
+    def _format_previous_break_times(self, previous_break_times: Optional[List[str]]) -> str:
+        """Format previous break times for the prompt."""
+        if not previous_break_times:
+            return "None (first prediction)"
+        return json.dumps(previous_break_times)
+    
     def _validate_inputs(self, start_time, sleep_debt: SleepDebt, 
-                        age: int, health_conditions: HealthConditions) -> None:
+                        age: int, health_conditions: HealthConditions,
+                        previous_break_times: Optional[List[str]] = None) -> None:
         """Validate input parameters."""
         if not isinstance(start_time, (datetime, str)):
             raise TypeError("start_time must be a datetime object or ISO string")
@@ -157,20 +166,29 @@ class BreakPredictionService:
         
         if not isinstance(health_conditions, HealthConditions):
             raise TypeError("health_conditions must be a HealthConditions object")
+        
+        if previous_break_times is not None:
+            if not isinstance(previous_break_times, list):
+                raise TypeError("previous_break_times must be a list or None")
+            for i, break_time in enumerate(previous_break_times):
+                if not isinstance(break_time, str):
+                    raise TypeError(f"previous_break_times[{i}] must be a string (ISO timestamp)")
     
-    def predict_break_need(self, start_time, sleep_debt: SleepDebt, 
-                          age: int, health_conditions: HealthConditions) -> Dict[str, Any]:
+    def predict_next_breaks(self, start_time, sleep_debt: SleepDebt, 
+                           age: int, health_conditions: HealthConditions,
+                           previous_break_times: Optional[List[str]] = None) -> Dict[str, Any]:
         """
-        Predict if a driver needs to take a break based on their current state.
+        Predict the next 5 break times for a driver based on their current state and previous predictions.
         
         Args:
             start_time: When the driver started driving (datetime object or ISO string with timezone)
             sleep_debt: Sleep debt information
             age: Driver's age in years
             health_conditions: Driver's health conditions
+            previous_break_times: List of previously predicted break times (ISO strings). Can be empty or None.
             
         Returns:
-            Dictionary with break prediction results
+            Dictionary with next 5 break times
             
         Raises:
             ValueError: If input validation fails
@@ -178,7 +196,7 @@ class BreakPredictionService:
             RuntimeError: If LLM request fails
         """
         # Validate inputs
-        self._validate_inputs(start_time, sleep_debt, age, health_conditions)
+        self._validate_inputs(start_time, sleep_debt, age, health_conditions, previous_break_times)
         
         # Parse start_time if it's a string
         if isinstance(start_time, str):
@@ -191,11 +209,12 @@ class BreakPredictionService:
         # Format data for prompt
         formatted_sleep_debt = self._format_sleep_debt(sleep_debt)
         formatted_health = self._format_health_conditions(health_conditions)
+        formatted_previous_times = self._format_previous_break_times(previous_break_times)
         
         # Prepare the prompt
-        prompt_template = self.prompts.get('break_prediction_prompt', '')
+        prompt_template = self.prompts.get('break_times_prompt', '')
         if not prompt_template:
-            raise ValueError("break_prediction_prompt not found in prompts file")
+            raise ValueError("break_times_prompt not found in prompts file")
         
         formatted_prompt = prompt_template.format(
             start_time=start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
@@ -203,7 +222,8 @@ class BreakPredictionService:
             driving_duration_hours=f"{driving_duration:.1f}",
             sleep_debt=formatted_sleep_debt,
             age=age,
-            health_conditions=formatted_health
+            health_conditions=formatted_health,
+            previous_break_times=formatted_previous_times
         )
         
         try:
@@ -213,22 +233,21 @@ class BreakPredictionService:
             
             # Add metadata
             result = {
-                "take_a_break": parsed_response.take_a_break,
-                "reason": parsed_response.reason,
-                "duration": parsed_response.duration,
+                "break_times": parsed_response.break_times,
                 "metadata": {
                     "driving_duration_hours": driving_duration,
                     "sleep_debt_hours": sleep_debt.duration / 3600,
                     "age": age,
                     "health_conditions": health_conditions.__dict__,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "user_timezone": str(start_time.tzinfo)
                 }
             }
             
             return result
             
         except Exception as e:
-            raise RuntimeError(f"Failed to get break prediction: {str(e)}")
+            raise RuntimeError(f"Failed to get break schedule prediction: {str(e)}")
 
 
 def create_sleep_debt(duration_seconds: int, sleep_quality: Optional[float] = None) -> SleepDebt:
@@ -261,8 +280,16 @@ if __name__ == "__main__":
     health_conditions = create_health_conditions(diabetes=False, hypertension=True, smoker=False)
     
     try:
-        result = service.predict_break_need(start_time, sleep_debt, age, health_conditions)
-        print("Break Prediction Result:")
+        # First prediction (no previous break times)
+        result = service.predict_next_breaks(start_time, sleep_debt, age, health_conditions)
+        print("First Break Times Prediction:")
         print(json.dumps(result, indent=2))
+        
+        # Example of subsequent prediction with previous break times
+        previous_times = result["break_times"][:3]  # Simulate that some breaks have passed
+        result2 = service.predict_next_breaks(start_time, sleep_debt, age, health_conditions, previous_times)
+        print("\nSecond Break Times Prediction (with previous times):")
+        print(json.dumps(result2, indent=2))
+        
     except Exception as e:
         print(f"Error: {e}")

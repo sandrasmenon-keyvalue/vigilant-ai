@@ -1,13 +1,15 @@
-# Break Prediction Service
+# Break Schedule Prediction Service
 
-An LLM-based service that analyzes driver data to predict when they should take breaks to prevent drowsiness-related accidents.
+An LLM-based service that analyzes driver data to create personalized break schedules, predicting the next 5 break times to prevent drowsiness-related accidents.
 
 ## Features
 
-- **LLM-powered analysis**: Uses Groq's GPT model via LangChain with structured output for intelligent break recommendations
-- **Comprehensive input analysis**: Considers sleep debt, age, health conditions, and driving duration
+- **LLM-powered break scheduling**: Uses Groq's GPT model via LangChain with structured output for intelligent break schedule creation
+- **Next 5 breaks prediction**: Provides a complete schedule of the next 5 recommended breaks with timing and duration
+- **Comprehensive input analysis**: Considers sleep debt, age, health conditions, driving duration, and time of day
 - **Structured output**: Uses LangChain's built-in structured output for reliable JSON responses
 - **Input validation**: Robust validation of all input parameters
+- **Personalized scheduling**: Adapts break frequency and duration based on individual risk factors
 - **Extensible design**: Easy to modify prompts and add new factors
 
 ## Installation
@@ -47,12 +49,13 @@ health_conditions = create_health_conditions(
     smoker=False
 )
 
-# Get prediction
-result = service.predict_break_need(start_time, sleep_debt, age, health_conditions)
+# Get break schedule
+result = service.predict_next_breaks(start_time, sleep_debt, age, health_conditions)
 
-print(f"Break needed: {result['take_a_break']}")
-print(f"Reason: {result['reason']}")
-print(f"Duration: {result['duration']} seconds")
+print(f"Overall assessment: {result['overall_assessment']}")
+print("Next 5 breaks:")
+for i, break_info in enumerate(result['next_breaks'], 1):
+    print(f"  Break {i}: {break_info['scheduled_time']} - {break_info['duration_minutes']}min - {break_info['reason']}")
 ```
 
 ### Input Parameters
@@ -84,15 +87,41 @@ Create with: `create_health_conditions(diabetes=True, hypertension=False, ...)`
 
 ```json
 {
-  "take_a_break": true,
-  "reason": "Driver has significant sleep debt (2.0 hours) combined with hypertension...",
-  "duration": 1800.0,
+  "next_breaks": [
+    {
+      "scheduled_time": "2025-09-25T10:30:00-07:00",
+      "duration_minutes": 20,
+      "reason": "Regular 2-hour break"
+    },
+    {
+      "scheduled_time": "2025-09-25T12:45:00-07:00", 
+      "duration_minutes": 30,
+      "reason": "Fatigue prevention break"
+    },
+    {
+      "scheduled_time": "2025-09-25T15:15:00-07:00",
+      "duration_minutes": 20,
+      "reason": "Regular break"
+    },
+    {
+      "scheduled_time": "2025-09-25T17:30:00-07:00",
+      "duration_minutes": 45,
+      "reason": "Extended rest for sleep debt"
+    },
+    {
+      "scheduled_time": "2025-09-25T20:00:00-07:00",
+      "duration_minutes": 30,
+      "reason": "Late night alertness break"
+    }
+  ],
+  "overall_assessment": "Driver shows moderate risk due to sleep debt and hypertension. Scheduled more frequent breaks with longer durations to maintain alertness.",
   "metadata": {
     "driving_duration_hours": 3.5,
     "sleep_debt_hours": 2.0,
     "age": 45,
     "health_conditions": {...},
-    "timestamp": "2025-09-25T10:30:00Z"
+    "timestamp": "2025-09-25T10:30:00Z",
+    "user_timezone": "America/Los_Angeles"
   }
 }
 ```
@@ -104,21 +133,21 @@ Run the test example:
 python test_example.py
 ```
 
-This will test three scenarios:
-1. High risk (long drive + high sleep debt + health conditions)
-2. Moderate risk (some sleep debt + age factor)
-3. Low risk (young driver + minimal sleep debt)
+This will test three scenarios and show the break schedules for:
+1. High risk (long drive + high sleep debt + health conditions) - More frequent, longer breaks
+2. Moderate risk (some sleep debt + age factor) - Regular intervals with moderate durations  
+3. Low risk (young driver + minimal sleep debt) - Standard 2-hour intervals
 
 ## Customization
 
 ### Modifying the Prompt
 
-Edit `prompts.yaml` to customize the LLM's decision-making logic:
+Edit `prompts.yaml` to customize the LLM's break scheduling logic:
 
 ```yaml
-break_prediction_prompt: |
+break_schedule_prompt: |
   Your custom prompt here...
-  Consider these factors: {start_time}, {sleep_debt}, {age}, {health_conditions}
+  Create 5 break times considering: {start_time}, {current_time}, {sleep_debt}, {age}, {health_conditions}
 ```
 
 ### Model Configuration
@@ -143,27 +172,47 @@ The service includes comprehensive error handling:
 
 ```python
 # Example integration in a driving app
-def check_driver_status(driver_data):
+def get_driver_break_schedule(driver_data):
     service = BreakPredictionService()
     
     try:
-        result = service.predict_break_need(
+        result = service.predict_next_breaks(
             start_time=driver_data['session_start'],
             sleep_debt=driver_data['sleep_debt'],
             age=driver_data['age'],
             health_conditions=driver_data['health_conditions']
         )
         
-        if result['take_a_break']:
-            # Trigger break notification
-            notify_driver(result['reason'], result['duration'])
+        # Schedule notifications for upcoming breaks
+        for break_info in result['next_breaks']:
+            schedule_break_reminder(
+                time=break_info['scheduled_time'],
+                duration=break_info['duration_minutes'],
+                reason=break_info['reason']
+            )
             
         return result
         
     except Exception as e:
         # Handle errors gracefully
-        log_error(f"Break prediction failed: {e}")
-        return {"take_a_break": True, "reason": "System error - taking precautionary break", "duration": 900}
+        log_error(f"Break schedule prediction failed: {e}")
+        return create_default_break_schedule()
+
+def create_default_break_schedule():
+    """Fallback break schedule in case of system errors."""
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    return {
+        "next_breaks": [
+            {
+                "scheduled_time": (now + timedelta(hours=2)).isoformat(),
+                "duration_minutes": 20,
+                "reason": "Standard break"
+            }
+            # ... 4 more breaks
+        ],
+        "overall_assessment": "Using default schedule due to system error"
+    }
 ```
 
 ## Files

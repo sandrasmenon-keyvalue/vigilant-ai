@@ -14,7 +14,7 @@ from predict import (
 )
 
 def test_break_prediction():
-    """Test the break prediction service with various scenarios."""
+    """Test the break prediction service with various scenarios including previous break times."""
     
     # Check if API key is set
     if not os.getenv("GROQ_API_KEY"):
@@ -65,18 +65,46 @@ def test_break_prediction():
         print(f"{'='*60}")
         
         try:
-            result = service.predict_break_need(
+            # First prediction (no previous break times)
+            result = service.predict_next_breaks(
                 start_time=scenario["start_time"],
                 sleep_debt=scenario["sleep_debt"],
                 age=scenario["age"],
                 health_conditions=scenario["health_conditions"]
             )
             
-            print(f"Break Needed: {result['take_a_break']}")
-            print(f"Duration: {result['duration']} seconds ({result['duration']/60:.1f} minutes)")
-            print(f"Reason: {result['reason']}")
             print(f"Driving Duration: {result['metadata']['driving_duration_hours']:.1f} hours")
             print(f"Sleep Debt: {result['metadata']['sleep_debt_hours']:.1f} hours")
+            print("Initial Break Times (no previous):")
+            for j, break_time in enumerate(result['break_times'], 1):
+                print(f"  {j}. {break_time}")
+            
+            # Test with previous break times (simulate some have passed)
+            previous_times = result['break_times'][:2]  # First 2 breaks as "previous"
+            result2 = service.predict_next_breaks(
+                start_time=scenario["start_time"],
+                sleep_debt=scenario["sleep_debt"],
+                age=scenario["age"],
+                health_conditions=scenario["health_conditions"],
+                previous_break_times=previous_times
+            )
+            
+            print("\nNext Break Times (with previous):")
+            for j, break_time in enumerate(result2['break_times'], 1):
+                print(f"  {j}. {break_time}")
+            
+            # Test with empty list
+            result3 = service.predict_next_breaks(
+                start_time=scenario["start_time"],
+                sleep_debt=scenario["sleep_debt"],
+                age=scenario["age"],
+                health_conditions=scenario["health_conditions"],
+                previous_break_times=[]
+            )
+            
+            print("\nBreak Times (with empty previous list):")
+            for j, break_time in enumerate(result3['break_times'], 1):
+                print(f"  {j}. {break_time}")
             
         except Exception as e:
             print(f"Error in scenario {i}: {e}")
