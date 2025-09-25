@@ -167,19 +167,15 @@ class RestaurantFinder:
     
     def _parse_restaurant_data(self, osm_data: Dict) -> Optional[Dict]:
         """
-        Parse OSM data into standardized restaurant format.
+        Parse OSM data into simplified restaurant format.
         
         Args:
             osm_data: Raw OSM element data
             
         Returns:
-            Dict with standardized restaurant info or None if invalid data:
+            Dict with simplified restaurant info or None if invalid data:
             - 'name': str - Restaurant name
-            - 'latitude': float - Latitude coordinate
-            - 'longitude': float - Longitude coordinate  
-            - 'amenity': str - Type (restaurant, cafe, fast_food, etc.)
             - 'link': str - Google Maps link with DMS coordinates
-            - Plus optional fields like cuisine, phone, website, etc.
         """
         try:
             tags = osm_data.get('tags', {})
@@ -202,35 +198,11 @@ class RestaurantFinder:
             if lat is None or lon is None:
                 return None
             
-            # Build restaurant data
+            # Build simplified restaurant data - only name and Google Maps link
             restaurant = {
                 'name': name,
-                'latitude': float(lat),
-                'longitude': float(lon),
-                'amenity': tags.get('amenity', 'unknown'),
                 'link': self._generate_google_maps_link(float(lat), float(lon))
             }
-            
-            # Add optional fields if available
-            optional_fields = {
-                'cuisine': tags.get('cuisine'),
-                'phone': tags.get('phone'),
-                'website': tags.get('website'),
-                'opening_hours': tags.get('opening_hours'),
-                'addr:street': tags.get('addr:street'),
-                'addr:housenumber': tags.get('addr:housenumber'),
-                'addr:city': tags.get('addr:city'),
-                'addr:postcode': tags.get('addr:postcode'),
-                'wheelchair': tags.get('wheelchair'),
-                'outdoor_seating': tags.get('outdoor_seating'),
-                'takeaway': tags.get('takeaway'),
-                'delivery': tags.get('delivery')
-            }
-            
-            # Add non-empty optional fields
-            for key, value in optional_fields.items():
-                if value and str(value).strip():
-                    restaurant[key] = str(value).strip()
             
             return restaurant
             
@@ -345,15 +317,7 @@ def example_usage():
         # Display first 5 restaurants
         for i, restaurant in enumerate(result['restaurants'][:5]):
             print(f"\n{i+1}. {restaurant['name']}")
-            print(f"   Type: {restaurant.get('amenity', 'unknown')}")
-            print(f"   Location: {restaurant['latitude']}, {restaurant['longitude']}")
             print(f"   Google Maps: {restaurant['link']}")
-            if 'cuisine' in restaurant:
-                print(f"   Cuisine: {restaurant['cuisine']}")
-            if 'phone' in restaurant:
-                print(f"   Phone: {restaurant['phone']}")
-            if 'website' in restaurant:
-                print(f"   Website: {restaurant['website']}")
         
     else:
         print("No restaurants found or search failed")

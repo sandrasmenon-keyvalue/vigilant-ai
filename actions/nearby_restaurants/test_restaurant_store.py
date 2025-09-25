@@ -99,9 +99,7 @@ def test_restaurant_finding():
             if result['restaurants']:
                 print(f"  Sample restaurants:")
                 for i, restaurant in enumerate(result['restaurants'][:3]):
-                    print(f"    {i+1}. {restaurant['name']} ({restaurant.get('amenity', 'unknown')})")
-                    if 'cuisine' in restaurant:
-                        print(f"       Cuisine: {restaurant['cuisine']}")
+                    print(f"    {i+1}. {restaurant['name']}")
                     print(f"       Google Maps: {restaurant.get('link', 'N/A')}")
             
         else:
@@ -251,12 +249,9 @@ def test_google_maps_links():
             # Test first few restaurants
             for i, restaurant in enumerate(result['restaurants'][:3]):
                 name = restaurant['name']
-                lat = restaurant['latitude']
-                lon = restaurant['longitude']
                 link = restaurant.get('link', 'Missing!')
                 
                 print(f"\n  Restaurant {i+1}: {name}")
-                print(f"    Coordinates: {lat}, {lon}")
                 print(f"    Generated link: {link}")
                 
                 # Validate link format (new DMS format)
@@ -354,10 +349,7 @@ def quick_demo():
         # Show top 5 restaurants
         print(f"\n🍽️  Top restaurants:")
         for i, restaurant in enumerate(result['restaurants'][:5]):
-            cuisine = restaurant.get('cuisine', 'Unknown cuisine')
-            amenity = restaurant.get('amenity', 'restaurant')
-            print(f"  {i+1}. {restaurant['name']} ({amenity})")
-            print(f"     {cuisine} | {restaurant['latitude']:.4f}, {restaurant['longitude']:.4f}")
+            print(f"  {i+1}. {restaurant['name']}")
             print(f"     🗺️  Google Maps: {restaurant.get('link', 'N/A')}")
         
         print(f"\n📊 Quick stats:")
@@ -365,12 +357,8 @@ def quick_demo():
         print(f"  Search radius: {result['search_radius_meters']}m")
         print(f"  Fetched at: {result['last_updated']}")
         
-        # Count amenity types
-        amenity_counts = {}
-        for restaurant in result['restaurants']:
-            amenity = restaurant.get('amenity', 'unknown')
-            amenity_counts[amenity] = amenity_counts.get(amenity, 0) + 1
-        print(f"  Amenity breakdown: {amenity_counts}")
+        # Since we only have name and link now, show simple statistics
+        print(f"  All restaurants have: name and Google Maps link")
         
     else:
         print("❌ No restaurants found")
