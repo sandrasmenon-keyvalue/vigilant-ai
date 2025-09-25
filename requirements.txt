@@ -13,6 +13,13 @@ torch==2.0.1
 torchvision==0.15.2
 Pillow==10.0.0
 
+# LLM and AI integration
+langchain==0.3.27
+langchain-groq==0.3.8
+pydantic==2.11.9
+PyYAML==6.0.2
+python-dotenv==1.1.1
+
 # Development and testing
 jupyter==1.0.0
 tqdm==4.65.0
