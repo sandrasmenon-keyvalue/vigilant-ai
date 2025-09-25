@@ -13,6 +13,8 @@ from typing import Dict, Any, Optional
 from dataclasses import dataclass
 from pathlib import Path
 from dotenv import load_dotenv
+import pytz
+from dateutil import parser
 
 from langchain_groq import ChatGroq
 from langchain.schema import HumanMessage
@@ -90,13 +92,34 @@ class BreakPredictionService:
         except yaml.YAMLError as e:
             raise ValueError(f"Error parsing YAML file: {e}")
     
+    def _parse_start_time(self, start_time_str: str) -> datetime:
+        """Parse ISO string to datetime object, preserving timezone."""
+        try:
+            # Parse ISO string with timezone info
+            parsed_time = parser.isoparse(start_time_str)
+            return parsed_time
+        except Exception as e:
+            raise ValueError(f"Invalid start_time format. Expected ISO string with timezone: {e}")
+    
     def _calculate_driving_duration(self, start_time: datetime) -> float:
         """Calculate driving duration in hours from start time."""
-        now = datetime.now(timezone.utc)
-        if start_time.tzinfo is None:
-            start_time = start_time.replace(tzinfo=timezone.utc)
+        # Get current time in the same timezone as start_time
+        user_timezone = start_time.tzinfo
+        now = datetime.now(user_timezone)
+        
         duration = (now - start_time).total_seconds() / 3600  # Convert to hours
         return max(0, duration)  # Ensure non-negative
+    
+    def _get_current_time_info(self, start_time: datetime) -> Dict[str, str]:
+        """Get current time information in user's timezone."""
+        user_timezone = start_time.tzinfo
+        now = datetime.now(user_timezone)
+        
+        return {
+            "current_time": now.strftime("%Y-%m-%d %H:%M:%S %Z"),
+            "current_hour": now.hour,
+            "timezone_name": str(user_timezone)
+        }
     
     def _format_sleep_debt(self, sleep_debt: SleepDebt) -> str:
         """Format sleep debt information for the prompt."""
@@ -117,11 +140,11 @@ class BreakPredictionService:
         }
         return json.dumps(conditions)
     
-    def _validate_inputs(self, start_time: datetime, sleep_debt: SleepDebt, 
+    def _validate_inputs(self, start_time, sleep_debt: SleepDebt, 
                         age: int, health_conditions: HealthConditions) -> None:
         """Validate input parameters."""
-        if not isinstance(start_time, datetime):
-            raise TypeError("start_time must be a datetime object")
+        if not isinstance(start_time, (datetime, str)):
+            raise TypeError("start_time must be a datetime object or ISO string")
         
         if not isinstance(sleep_debt, SleepDebt):
             raise TypeError("sleep_debt must be a SleepDebt object")
@@ -135,13 +158,13 @@ class BreakPredictionService:
         if not isinstance(health_conditions, HealthConditions):
             raise TypeError("health_conditions must be a HealthConditions object")
     
-    def predict_break_need(self, start_time: datetime, sleep_debt: SleepDebt, 
+    def predict_break_need(self, start_time, sleep_debt: SleepDebt, 
                           age: int, health_conditions: HealthConditions) -> Dict[str, Any]:
         """
         Predict if a driver needs to take a break based on their current state.
         
         Args:
-            start_time: When the driver started driving (UTC timestamp)
+            start_time: When the driver started driving (datetime object or ISO string with timezone)
             sleep_debt: Sleep debt information
             age: Driver's age in years
             health_conditions: Driver's health conditions
@@ -157,8 +180,13 @@ class BreakPredictionService:
         # Validate inputs
         self._validate_inputs(start_time, sleep_debt, age, health_conditions)
         
+        # Parse start_time if it's a string
+        if isinstance(start_time, str):
+            start_time = self._parse_start_time(start_time)
+        
         # Calculate additional context
         driving_duration = self._calculate_driving_duration(start_time)
+        current_time_info = self._get_current_time_info(start_time)
         
         # Format data for prompt
         formatted_sleep_debt = self._format_sleep_debt(sleep_debt)
@@ -169,11 +197,10 @@ class BreakPredictionService:
         if not prompt_template:
             raise ValueError("break_prediction_prompt not found in prompts file")
         
-        # Add driving duration context to the prompt
-        enhanced_start_time = f"{start_time.isoformat()} (driving for {driving_duration:.1f} hours)"
-        
         formatted_prompt = prompt_template.format(
-            start_time=enhanced_start_time,
+            start_time=start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
+            current_time=current_time_info["current_time"],
+            driving_duration_hours=f"{driving_duration:.1f}",
             sleep_debt=formatted_sleep_debt,
             age=age,
             health_conditions=formatted_health
