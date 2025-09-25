@@ -24,9 +24,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 import uvicorn
 
-# Add ai-module to path
-sys.path.append(os.path.join(os.path.dirname(__file__), 'ai-module'))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'ai-module', 'vision-model'))
+# Add ai_module to path
+sys.path.append(os.path.join(os.path.dirname(__file__), 'ai_module'))
+sys.path.append(os.path.join(os.path.dirname(__file__), 'ai_module', 'vision_model'))
 
 # Import AI modules
 try:
@@ -70,7 +70,6 @@ feature_extractor: Optional[DrowsinessFeatureExtractor] = None
 window_processor: Optional[SlidingWindowProcessor] = None
 drowsiness_model = None
 feature_scaler = None
-score_amplifier: Optional[DrowsinessScoreAmplifier] = None
 
 
 # Pydantic models
@@ -119,7 +118,7 @@ class BatchInferenceRequest(BaseModel):
 @app.on_event("startup")
 async def startup_event():
     """Initialize AI components on startup."""
-    global face_detector, feature_extractor, window_processor, drowsiness_model, feature_scaler, score_amplifier
+    global face_detector, feature_extractor, window_processor, drowsiness_model, feature_scaler
     
     logger.info("🚀 Starting Vigilant AI Inference Service")
     
@@ -146,8 +145,6 @@ async def startup_event():
             fps=5.0
         )
         
-        # Initialize drowsiness score amplifier for better responsiveness
-        score_amplifier = DrowsinessScoreAmplifier()
         
         # Load trained model and scaler
         model_path = "trained_models/vision-training/drowsiness_model.pkl"
@@ -352,24 +349,8 @@ def process_frame_inference(image: np.ndarray, timestamp: float = None) -> Infer
                     logger.info(f"   🎯 Confidence: {confidence:.4f}")
                     logger.info(f"   📊 Raw probabilities: {probabilities[0]} [drowsy, alert]")
                     
-                    # Apply drowsiness score amplification for better responsiveness
-                    if score_amplifier:
-                        blendshapes = getattr(feature_extractor, '_last_blendshapes', None) if hasattr(feature_extractor, '_last_blendshapes') else None
-                        drowsiness_score, amplification_reason = score_amplifier.amplify_score(
-                            original_score=original_drowsiness_score,
-                            features=features,
-                            blendshapes=blendshapes
-                        )
-                        
-                        if drowsiness_score != original_drowsiness_score:
-                            boost_factor = drowsiness_score / original_drowsiness_score if original_drowsiness_score > 0 else 1.0
-                            logger.info(f"🚀 Score amplified: {original_drowsiness_score:.4f} → {drowsiness_score:.4f} (boost: {boost_factor:.2f}x)")
-                            logger.info(f"   📋 Reason: {amplification_reason}")
-                        else:
-                            logger.info(f"➡️ No amplification applied: {amplification_reason}")
-                    else:
-                        drowsiness_score = original_drowsiness_score
-                        logger.warning("⚠️ Score amplifier not available, using original score")
+                    # Use original drowsiness score
+                    drowsiness_score = original_drowsiness_score
                     
                 except Exception as e:
                     prediction_time = time.time() - prediction_start
