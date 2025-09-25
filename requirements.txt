@@ -19,6 +19,8 @@ langchain-groq==0.3.8
 pydantic==2.11.9
 PyYAML==6.0.2
 python-dotenv==1.1.1
+pytz==2024.2
+python-dateutil==2.9.0
 
 # Development and testing
 jupyter==1.0.0

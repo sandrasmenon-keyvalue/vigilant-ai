@@ -9,7 +9,7 @@ break_prediction_prompt: |
 
   Based on this information, analyze the driver's risk level and determine:
   1. Whether they should take a break immediately
-  2. The reason for your recommendation
+  2. The reason for your recommendation (MUST be concise for mobile toast notification)
   3. If a break is needed, how long it should be (in seconds)
 
   Consider these factors in your analysis:
@@ -17,7 +17,8 @@ break_prediction_prompt: |
   - Age-related factors (older drivers may need more frequent breaks)
   - Health conditions that can worsen drowsiness (diabetes affecting blood sugar, heart conditions, respiratory issues affecting oxygen levels)
   - Cumulative driving time since start
-  - Time of day effects (circadian rhythm considerations)
+  - Time of day effects (circadian rhythm considerations) - late night/early morning driving is riskier
+  - Current time in user's timezone to assess fatigue risk patterns
 
   Guidelines for break recommendations:
   - High sleep debt (>2 hours): Recommend immediate break
@@ -28,8 +29,17 @@ break_prediction_prompt: |
 
   Driver Data:
   Start Time: {start_time}
+  Current Time: {current_time}
+  Driving Duration: {driving_duration_hours} hours
   Sleep Debt: {sleep_debt}
   Age: {age} years
   Health Conditions: {health_conditions}
 
-  Analyze this data and provide your recommendation. Be conservative in your recommendations - it's better to suggest an unnecessary break than miss a dangerous situation.
+  IMPORTANT FOR REASON FIELD: Keep it SHORT and user-friendly for mobile app toast notifications. 
+  Examples of good toast reasons:
+  - "You've been driving for 3+ hours - time for a break!"
+  - "Feeling tired + long drive = break needed!"
+  - "Take a 20-minute break to stay alert."
+  - "All good! Stay focused and drive safe."
+
+  Make it conversational, under 60 characters when possible, and avoid medical jargon.
