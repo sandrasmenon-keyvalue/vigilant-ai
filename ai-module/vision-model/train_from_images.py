@@ -284,9 +284,24 @@ class ImageTrainingPipeline:
             results: Training results
             feature_names: List of feature names
         """
+        # Convert numpy types to Python types for JSON serialization
+        def convert_numpy_types(obj):
+            if isinstance(obj, np.integer):
+                return int(obj)
+            elif isinstance(obj, np.floating):
+                return float(obj)
+            elif isinstance(obj, np.ndarray):
+                return obj.tolist()
+            elif isinstance(obj, dict):
+                return {k: convert_numpy_types(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_numpy_types(item) for item in obj]
+            else:
+                return obj
+        
         summary = {
-            'training_stats': self.stats,
-            'model_results': results,
+            'training_stats': convert_numpy_types(self.stats),
+            'model_results': convert_numpy_types(results),
             'feature_count': len(feature_names),
             'feature_names': feature_names,
             'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
@@ -299,9 +314,11 @@ class ImageTrainingPipeline:
         
         # Save feature importance
         importance = self.model_trainer.get_feature_importance()
+        # Convert numpy types to Python types for JSON serialization
+        importance_serializable = {k: float(v) for k, v in importance.items()}
         importance_path = self.output_dir / "feature_importance.json"
         with open(importance_path, 'w') as f:
-            json.dump(importance, f, indent=2)
+            json.dump(importance_serializable, f, indent=2)
         
         print(f"✅ Training summary saved to {summary_path}")
         print(f"✅ Feature importance saved to {importance_path}")
