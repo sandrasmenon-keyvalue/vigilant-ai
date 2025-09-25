@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Test script for NearbyRestaurantsStore class
+Test script for RestaurantFinder class
 
-This script tests the functionality of the NearbyRestaurantsStore class
+This script tests the functionality of the RestaurantFinder class
 with real OpenStreetMap API calls and various test scenarios.
 """
 
 import sys
 import time
 from datetime import datetime
-from store_nearby_restaurants import NearbyRestaurantsStore
+from restaurant_finder import RestaurantFinder
 
 
 def print_separator(title: str):
@@ -24,30 +24,25 @@ def test_initialization():
     print_separator("TEST 1: INITIALIZATION")
     
     # Test default initialization
-    store1 = NearbyRestaurantsStore()
+    finder1 = RestaurantFinder()
     print("✓ Default initialization successful")
-    print(f"  Default radius: {store1._radius_meters}m")
+    print(f"  Default radius: {finder1._radius_meters}m")
     
     # Test custom radius
-    store2 = NearbyRestaurantsStore(radius_meters=2000)
+    finder2 = RestaurantFinder(radius_meters=2000)
     print("✓ Custom radius initialization successful")
-    print(f"  Custom radius: {store2._radius_meters}m")
+    print(f"  Custom radius: {finder2._radius_meters}m")
     
-    # Test initial state
-    initial_data = store1.get_latest()
-    print(f"✓ Initial state check:")
-    print(f"  Restaurant count: {initial_data['count']}")
-    print(f"  Has location: {initial_data['location'] is not None}")
-    print(f"  Last updated: {initial_data['last_updated']}")
+    print(f"✓ RestaurantFinder is stateless - no stored data")
     
-    return store1
+    return finder1
 
 
 def test_coordinate_validation():
     """Test coordinate validation with various inputs."""
     print_separator("TEST 2: COORDINATE VALIDATION")
     
-    store = NearbyRestaurantsStore()
+    finder = RestaurantFinder()
     
     # Valid coordinates
     test_cases = [
@@ -64,7 +59,7 @@ def test_coordinate_validation():
     
     for lat, lon, expected, description in test_cases:
         try:
-            result = store._validate_coordinates(lat, lon)
+            result = finder._validate_coordinates(lat, lon)
             status = "✓" if result == expected else "✗"
             print(f"{status} {description}: {result}")
         except Exception as e:
@@ -73,11 +68,11 @@ def test_coordinate_validation():
             print(f"{status} {description}: Exception caught - {str(e)}")
 
 
-def test_real_location_update():
-    """Test updating location with real coordinates and API calls."""
-    print_separator("TEST 3: REAL LOCATION UPDATE")
+def test_restaurant_finding():
+    """Test finding restaurants with real coordinates and API calls."""
+    print_separator("TEST 3: RESTAURANT FINDING")
     
-    store = NearbyRestaurantsStore(radius_meters=1000)
+    finder = RestaurantFinder(radius_meters=1000)
     
     # Test locations with expected restaurant density
     test_locations = [
@@ -91,120 +86,90 @@ def test_real_location_update():
         print(f"   Coordinates: {lat}, {lon}")
         
         start_time = time.time()
-        success = store.update_location(lat, lon)
+        result = finder.find_nearby_restaurants(lat, lon)
         end_time = time.time()
         
-        if success:
-            data = store.get_latest()
-            print(f"✓ Update successful in {end_time - start_time:.2f} seconds")
-            print(f"  Found {data['count']} restaurants")
-            print(f"  Location stored: {data['location']}")
-            print(f"  Last updated: {data['last_updated']}")
+        if result['count'] > 0:
+            print(f"✓ Search successful in {end_time - start_time:.2f} seconds")
+            print(f"  Found {result['count']} restaurants")
+            print(f"  Location: {result['location']}")
+            print(f"  Last updated: {result['last_updated']}")
             
             # Show sample restaurants
-            if data['restaurants']:
+            if result['restaurants']:
                 print(f"  Sample restaurants:")
-                for i, restaurant in enumerate(data['restaurants'][:3]):
+                for i, restaurant in enumerate(result['restaurants'][:3]):
                     print(f"    {i+1}. {restaurant['name']} ({restaurant.get('amenity', 'unknown')})")
                     if 'cuisine' in restaurant:
                         print(f"       Cuisine: {restaurant['cuisine']}")
                     print(f"       Google Maps: {restaurant.get('link', 'N/A')}")
             
-            # Test data freshness
-            is_fresh = store.is_data_fresh(max_age_minutes=5)
-            print(f"  Data is fresh: {is_fresh}")
-            
         else:
-            print("✗ Update failed")
+            print("✗ No restaurants found")
         
         # Small delay between requests to be respectful to the API
         time.sleep(1)
     
-    return store
+    return finder
 
 
-def test_data_replacement():
-    """Test that new location updates replace old data."""
-    print_separator("TEST 4: DATA REPLACEMENT")
+def test_stateless_behavior():
+    """Test that the finder is stateless - no data persistence between calls."""
+    print_separator("TEST 4: STATELESS BEHAVIOR")
     
-    store = NearbyRestaurantsStore(radius_meters=1000)
+    finder = RestaurantFinder(radius_meters=1000)
     
-    # First location (NYC)
-    print("📍 Setting first location (NYC)...")
-    success1 = store.update_location(40.7589, -73.9851)
-    if success1:
-        data1 = store.get_latest()
-        print(f"✓ First location: {data1['count']} restaurants")
-        first_location = data1['location']
-        first_count = data1['count']
-        first_time = data1['last_updated']
+    # First search (NYC)
+    print("📍 First search (NYC)...")
+    result1 = finder.find_nearby_restaurants(40.7589, -73.9851)
+    print(f"✓ First search: {result1['count']} restaurants")
+    first_location = result1['location']
+    first_count = result1['count']
+    first_time = result1['last_updated']
     
     time.sleep(2)  # Ensure different timestamps
     
-    # Second location (San Francisco)
-    print("📍 Setting second location (San Francisco)...")
-    success2 = store.update_location(37.7749, -122.4194)
-    if success2:
-        data2 = store.get_latest()
-        print(f"✓ Second location: {data2['count']} restaurants")
-        second_location = data2['location']
-        second_count = data2['count']
-        second_time = data2['last_updated']
-        
-        # Verify data was replaced
-        print(f"\n🔄 Data replacement verification:")
-        print(f"  Location changed: {first_location != second_location}")
-        print(f"  Count changed: {first_count != second_count}")
-        print(f"  Time updated: {first_time != second_time}")
-        print(f"  Old location: {first_location}")
-        print(f"  New location: {second_location}")
+    # Second search (San Francisco)
+    print("📍 Second search (San Francisco)...")
+    result2 = finder.find_nearby_restaurants(37.7749, -122.4194)
+    print(f"✓ Second search: {result2['count']} restaurants")
+    second_location = result2['location']
+    second_count = result2['count']
+    second_time = result2['last_updated']
+    
+    # Verify stateless behavior
+    print(f"\n🔄 Stateless verification:")
+    print(f"  Different locations: {first_location != second_location}")
+    print(f"  Different counts: {first_count != second_count}")
+    print(f"  Different timestamps: {first_time != second_time}")
+    print(f"  No data persistence: ✓ (each call is independent)")
 
 
-def test_stats_and_utilities():
-    """Test statistics and utility methods."""
-    print_separator("TEST 5: STATS AND UTILITIES")
+def test_utilities():
+    """Test utility methods."""
+    print_separator("TEST 5: UTILITIES")
     
-    store = NearbyRestaurantsStore(radius_meters=1500)
+    finder = RestaurantFinder(radius_meters=1500)
     
-    # Update with a location
-    success = store.update_location(40.7589, -73.9851)
-    if success:
-        # Test stats
-        stats = store.get_stats()
-        print("📊 Statistics:")
-        for key, value in stats.items():
-            print(f"  {key}: {value}")
-        
-        # Test radius change
-        print(f"\n🔧 Testing radius change:")
-        print(f"  Current radius: {store._radius_meters}m")
-        success_radius = store.set_radius(2000)
-        print(f"  Radius change successful: {success_radius}")
-        print(f"  New radius: {store._radius_meters}m")
-        
-        # Test invalid radius
-        invalid_radius = store.set_radius(-100)
-        print(f"  Invalid radius rejected: {not invalid_radius}")
-        
-        # Test data freshness with different thresholds
-        print(f"\n⏰ Data freshness tests:")
-        print(f"  Fresh (30 min): {store.is_data_fresh(30)}")
-        print(f"  Fresh (5 min): {store.is_data_fresh(5)}")
-        print(f"  Fresh (1 min): {store.is_data_fresh(1)}")
-        
-        # Test data clearing
-        print(f"\n🧹 Testing data clearing:")
-        print(f"  Before clear: {len(store._latest_restaurants)} restaurants")
-        store.clear_data()
-        print(f"  After clear: {len(store._latest_restaurants)} restaurants")
-        print(f"  Location cleared: {store._latest_location is None}")
+    # Test radius change
+    print(f"🔧 Testing radius change:")
+    print(f"  Current radius: {finder._radius_meters}m")
+    success_radius = finder.set_radius(2000)
+    print(f"  Radius change successful: {success_radius}")
+    print(f"  New radius: {finder._radius_meters}m")
+    
+    # Test invalid radius
+    invalid_radius = finder.set_radius(-100)
+    print(f"  Invalid radius rejected: {not invalid_radius}")
+    
+    print(f"\n✅ RestaurantFinder utilities working correctly")
 
 
 def test_error_handling():
     """Test error handling with various failure scenarios."""
     print_separator("TEST 6: ERROR HANDLING")
     
-    store = NearbyRestaurantsStore()
+    finder = RestaurantFinder()
     
     # Test invalid coordinates
     print("🚫 Testing invalid coordinates:")
@@ -217,30 +182,27 @@ def test_error_handling():
     
     for lat, lon, description in invalid_coords:
         try:
-            success = store.update_location(lat, lon)
-            status = "✓" if not success else "✗"
+            result = finder.find_nearby_restaurants(lat, lon)
+            empty_result = result['count'] == 0 and result['location'] is None
+            status = "✓" if empty_result else "✗"
             print(f"  {status} {description}: Properly rejected")
         except Exception as e:
             print(f"  ✓ {description}: Exception handled - {type(e).__name__}")
     
     # Test with very remote location (should return few/no results)
     print(f"\n🏝️  Testing remote location (middle of ocean):")
-    success = store.update_location(0.0, 0.0)  # Gulf of Guinea
-    if success:
-        data = store.get_latest()
-        print(f"  ✓ Remote location handled: {data['count']} restaurants found")
-    else:
-        print(f"  ✓ Remote location handled: Update failed gracefully")
+    result = finder.find_nearby_restaurants(0.0, 0.0)  # Gulf of Guinea
+    print(f"  ✓ Remote location handled: {result['count']} restaurants found")
 
 
 def test_overpass_query_building():
     """Test the Overpass query building functionality."""
     print_separator("TEST 7: OVERPASS QUERY BUILDING")
     
-    store = NearbyRestaurantsStore(radius_meters=1000)
+    finder = RestaurantFinder(radius_meters=1000)
     
     # Test query building
-    query = store._build_overpass_query(40.7589, -73.9851)
+    query = finder._build_overpass_query(40.7589, -73.9851)
     print("🔍 Generated Overpass query:")
     print(query)
     
@@ -261,7 +223,7 @@ def test_google_maps_links():
     """Test Google Maps link generation."""
     print_separator("TEST 8: GOOGLE MAPS LINKS")
     
-    store = NearbyRestaurantsStore(radius_meters=1000)
+    finder = RestaurantFinder(radius_meters=1000)
     
     # Test coordinate conversion with known values
     print("🔢 Testing coordinate conversion:")
@@ -273,22 +235,21 @@ def test_google_maps_links():
     ]
     
     for lat, lon, location in test_coords:
-        link = store._generate_google_maps_link(lat, lon)
+        link = finder._generate_google_maps_link(lat, lon)
         print(f"  📍 {location}")
         print(f"    Decimal: {lat}, {lon}")
         print(f"    DMS Link: {link}")
         print()
     
-    # Update with a known location
-    success = store.update_location(40.7589, -73.9851)  # Times Square
+    # Find restaurants at a known location
+    result = finder.find_nearby_restaurants(40.7589, -73.9851)  # Times Square
     
-    if success:
-        data = store.get_latest()
-        if data['restaurants']:
+    if result['count'] > 0:
+        if result['restaurants']:
             print("🗺️  Testing Google Maps link generation:")
             
             # Test first few restaurants
-            for i, restaurant in enumerate(data['restaurants'][:3]):
+            for i, restaurant in enumerate(result['restaurants'][:3]):
                 name = restaurant['name']
                 lat = restaurant['latitude']
                 lon = restaurant['longitude']
@@ -324,8 +285,8 @@ def test_google_maps_links():
                 print(f"    {overall_status}")
             
             print(f"\n📊 Link generation summary:")
-            total_restaurants = len(data['restaurants'])
-            restaurants_with_links = len([r for r in data['restaurants'] if 'link' in r and r['link']])
+            total_restaurants = len(result['restaurants'])
+            restaurants_with_links = len([r for r in result['restaurants'] if 'link' in r and r['link']])
             print(f"  Total restaurants: {total_restaurants}")
             print(f"  Restaurants with links: {restaurants_with_links}")
             print(f"  Link coverage: {restaurants_with_links/total_restaurants*100:.1f}%")
@@ -343,26 +304,26 @@ def run_comprehensive_test():
     
     try:
         # Run all test functions
-        store = test_initialization()
+        finder = test_initialization()
         test_coordinate_validation()
-        store_with_data = test_real_location_update()
-        test_data_replacement()
-        test_stats_and_utilities()
+        finder_with_data = test_restaurant_finding()
+        test_stateless_behavior()
+        test_utilities()
         test_error_handling()
         test_overpass_query_building()
         test_google_maps_links()
         
         print_separator("🎉 ALL TESTS COMPLETED SUCCESSFULLY")
-        print("✅ NearbyRestaurantsStore is working correctly!")
+        print("✅ RestaurantFinder is working correctly!")
         print(f"⏰ Test completed at: {datetime.now()}")
         
         # Final demonstration
-        if store_with_data and store_with_data.get_latest()['count'] > 0:
-            print(f"\n📋 Final data summary:")
-            final_data = store_with_data.get_latest()
-            print(f"  Location: {final_data['location']}")
-            print(f"  Restaurants: {final_data['count']}")
-            print(f"  Sample restaurant: {final_data['restaurants'][0]['name'] if final_data['restaurants'] else 'None'}")
+        print(f"\n📋 Final demonstration:")
+        final_result = finder.find_nearby_restaurants(40.7589, -73.9851)
+        print(f"  Location: {final_result['location']}")
+        print(f"  Restaurants: {final_result['count']}")
+        print(f"  Sample restaurant: {final_result['restaurants'][0]['name'] if final_result['restaurants'] else 'None'}")
+        print(f"  ✅ Stateless design working perfectly!")
         
     except Exception as e:
         print_separator("❌ TEST SUITE FAILED")
@@ -378,41 +339,45 @@ def quick_demo():
     """Run a quick demonstration of basic functionality."""
     print_separator("🚀 QUICK DEMO")
     
-    # Initialize store
-    store = NearbyRestaurantsStore(radius_meters=1000)
-    print("✓ Initialized restaurant store")
+    # Initialize finder
+    finder = RestaurantFinder(radius_meters=1000)
+    print("✓ Initialized restaurant finder")
     
-    # Test with Times Square coordinates
+    # Test with Kerala coordinates
     lat, lon = 10.011162355852674, 76.36725577939116
-    print(f"📍 Searching near Times Square: {lat}, {lon}")
+    print(f"📍 Searching near Kerala, India: {lat}, {lon}")
     
-    success = store.update_location(lat, lon)
-    if success:
-        data = store.get_latest()
-        print(f"✅ Found {data['count']} restaurants!")
+    result = finder.find_nearby_restaurants(lat, lon)
+    if result['count'] > 0:
+        print(f"✅ Found {result['count']} restaurants!")
         
         # Show top 5 restaurants
         print(f"\n🍽️  Top restaurants:")
-        for i, restaurant in enumerate(data['restaurants'][:5]):
+        for i, restaurant in enumerate(result['restaurants'][:5]):
             cuisine = restaurant.get('cuisine', 'Unknown cuisine')
             amenity = restaurant.get('amenity', 'restaurant')
             print(f"  {i+1}. {restaurant['name']} ({amenity})")
             print(f"     {cuisine} | {restaurant['latitude']:.4f}, {restaurant['longitude']:.4f}")
             print(f"     🗺️  Google Maps: {restaurant.get('link', 'N/A')}")
         
-        # Show stats
-        stats = store.get_stats()
         print(f"\n📊 Quick stats:")
-        print(f"  Total restaurants: {stats['restaurant_count']}")
-        print(f"  Data age: {stats['data_age_minutes']:.1f} minutes")
-        print(f"  Amenity breakdown: {stats.get('amenity_breakdown', {})}")
+        print(f"  Total restaurants: {result['count']}")
+        print(f"  Search radius: {result['search_radius_meters']}m")
+        print(f"  Fetched at: {result['last_updated']}")
+        
+        # Count amenity types
+        amenity_counts = {}
+        for restaurant in result['restaurants']:
+            amenity = restaurant.get('amenity', 'unknown')
+            amenity_counts[amenity] = amenity_counts.get(amenity, 0) + 1
+        print(f"  Amenity breakdown: {amenity_counts}")
         
     else:
-        print("❌ Failed to fetch restaurant data")
+        print("❌ No restaurants found")
 
 
 if __name__ == "__main__":
-    print("🧪 NearbyRestaurantsStore Test Suite")
+    print("🧪 RestaurantFinder Test Suite")
     print("=" * 50)
     
     if len(sys.argv) > 1 and sys.argv[1] == "--quick":

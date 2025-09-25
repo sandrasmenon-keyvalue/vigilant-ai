@@ -1,9 +1,8 @@
 """
-Nearby Restaurants Store using OpenStreetMap Data
+Restaurant Finder using OpenStreetMap Data
 
-This module provides functionality to fetch, store, and retrieve nearby restaurants
-using OpenStreetMap's Overpass API. The data is stored in memory and replaced
-with each location update.
+This module provides functionality to find nearby restaurants using OpenStreetMap's 
+Overpass API. Fetches and returns restaurant data immediately without storing.
 """
 
 import requests
@@ -17,67 +16,33 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class NearbyRestaurantsStore:
+class RestaurantFinder:
     """
-    A class to fetch, store, and retrieve nearby restaurants using OpenStreetMap data.
-    Stores the latest restaurant data in memory and replaces it with each new location update.
+    A class to find nearby restaurants using OpenStreetMap data.
+    Fetches and returns restaurant data immediately without storing.
     """
     
     def __init__(self, radius_meters: int = 1000):
         """
-        Initialize the restaurant store.
+        Initialize the restaurant finder.
         
         Args:
             radius_meters: Search radius in meters (default: 1000m = 1km)
         """
-        self._latest_restaurants: List[Dict] = []
-        self._latest_location: Optional[Tuple[float, float]] = None  # (lat, lon)
-        self._last_updated: Optional[datetime] = None
         self._radius_meters: int = radius_meters
         self._overpass_url: str = "https://overpass-api.de/api/interpreter"
         self._timeout_seconds: int = 30
         
-        logger.info(f"Initialized NearbyRestaurantsStore with {radius_meters}m radius")
+        logger.info(f"Initialized RestaurantFinder with {radius_meters}m radius")
     
-    def update_location(self, latitude: float, longitude: float) -> bool:
+    def find_nearby_restaurants(self, latitude: float, longitude: float) -> Dict:
         """
-        Update location and fetch new nearby restaurants.
-        Replaces existing restaurant data.
+        Find and return nearby restaurants immediately.
         
         Args:
             latitude: Latitude coordinate (-90 to 90)
             longitude: Longitude coordinate (-180 to 180)
             
-        Returns:
-            bool: True if update successful, False otherwise
-        """
-        try:
-            # Validate coordinates
-            if not self._validate_coordinates(latitude, longitude):
-                logger.error(f"Invalid coordinates: lat={latitude}, lon={longitude}")
-                return False
-            
-            logger.info(f"Updating location to lat={latitude}, lon={longitude}")
-            
-            # Fetch new restaurant data
-            restaurants = self._fetch_restaurants_from_osm(latitude, longitude)
-            
-            # Update stored data
-            self._latest_restaurants = restaurants
-            self._latest_location = (latitude, longitude)
-            self._last_updated = datetime.now()
-            
-            logger.info(f"Successfully updated with {len(restaurants)} restaurants")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to update location: {str(e)}")
-            return False
-    
-    def get_latest(self) -> Dict:
-        """
-        Get the latest restaurants and their search location.
-        
         Returns:
             Dict containing:
             - 'restaurants': List of restaurant data
@@ -86,20 +51,47 @@ class NearbyRestaurantsStore:
             - 'count': int
             - 'search_radius_meters': int
         """
-        location_dict = None
-        if self._latest_location:
-            location_dict = {
-                'latitude': self._latest_location[0],
-                'longitude': self._latest_location[1]
+        try:
+            # Validate coordinates
+            if not self._validate_coordinates(latitude, longitude):
+                logger.error(f"Invalid coordinates: lat={latitude}, lon={longitude}")
+                return {
+                    'restaurants': [],
+                    'location': None,
+                    'last_updated': None,
+                    'count': 0,
+                    'search_radius_meters': self._radius_meters
+                }
+            
+            logger.info(f"Finding restaurants near lat={latitude}, lon={longitude}")
+            
+            # Fetch restaurant data
+            restaurants = self._fetch_restaurants_from_osm(latitude, longitude)
+            last_updated = datetime.now()
+            
+            logger.info(f"Found {len(restaurants)} restaurants")
+            
+            # Return results immediately
+            return {
+                'restaurants': restaurants,
+                'location': {
+                    'latitude': latitude,
+                    'longitude': longitude
+                },
+                'last_updated': last_updated,
+                'count': len(restaurants),
+                'search_radius_meters': self._radius_meters
             }
-        
-        return {
-            'restaurants': self._latest_restaurants.copy(),
-            'location': location_dict,
-            'last_updated': self._last_updated,
-            'count': len(self._latest_restaurants),
-            'search_radius_meters': self._radius_meters
-        }
+            
+        except Exception as e:
+            logger.error(f"Failed to find restaurants: {str(e)}")
+            return {
+                'restaurants': [],
+                'location': None,
+                'last_updated': None,
+                'count': 0,
+                'search_radius_meters': self._radius_meters
+            }
     
     def _fetch_restaurants_from_osm(self, lat: float, lon: float) -> List[Dict]:
         """
@@ -308,65 +300,6 @@ class NearbyRestaurantsStore:
         except (ValueError, TypeError):
             return False
     
-    def get_stats(self) -> Dict:
-        """
-        Get statistics about the current data.
-        
-        Returns:
-            Dict with stats like count, last_updated, search_radius, etc.
-        """
-        stats = {
-            'restaurant_count': len(self._latest_restaurants),
-            'last_updated': self._last_updated,
-            'search_radius_meters': self._radius_meters,
-            'has_location_data': self._latest_location is not None,
-            'data_age_minutes': None
-        }
-        
-        if self._last_updated:
-            age = datetime.now() - self._last_updated
-            stats['data_age_minutes'] = age.total_seconds() / 60
-        
-        if self._latest_location:
-            stats['current_location'] = {
-                'latitude': self._latest_location[0],
-                'longitude': self._latest_location[1]
-            }
-        
-        # Amenity breakdown
-        if self._latest_restaurants:
-            amenity_counts = {}
-            for restaurant in self._latest_restaurants:
-                amenity = restaurant.get('amenity', 'unknown')
-                amenity_counts[amenity] = amenity_counts.get(amenity, 0) + 1
-            stats['amenity_breakdown'] = amenity_counts
-        
-        return stats
-    
-    def is_data_fresh(self, max_age_minutes: int = 30) -> bool:
-        """
-        Check if the current data is fresh enough.
-        
-        Args:
-            max_age_minutes: Maximum age in minutes to consider data fresh
-            
-        Returns:
-            bool: True if data is fresh, False if stale or no data
-        """
-        if not self._last_updated:
-            return False
-        
-        age = datetime.now() - self._last_updated
-        return age.total_seconds() / 60 <= max_age_minutes
-    
-    def clear_data(self) -> None:
-        """
-        Clear all stored restaurant data.
-        """
-        self._latest_restaurants = []
-        self._latest_location = None
-        self._last_updated = None
-        logger.info("Cleared all restaurant data")
     
     def set_radius(self, radius_meters: int) -> bool:
         """
@@ -389,10 +322,10 @@ class NearbyRestaurantsStore:
 
 # Example usage and testing functions
 def example_usage():
-    """Example of how to use the NearbyRestaurantsStore class."""
+    """Example of how to use the RestaurantFinder class."""
     
-    # Initialize the store
-    restaurant_store = NearbyRestaurantsStore(radius_meters=1500)
+    # Initialize the finder
+    restaurant_finder = RestaurantFinder(radius_meters=1500)
     
     # Example coordinates (Times Square, NYC)
     latitude = 40.7589
@@ -400,20 +333,17 @@ def example_usage():
     
     print(f"Searching for restaurants near {latitude}, {longitude}")
     
-    # Update location and fetch restaurants
-    success = restaurant_store.update_location(latitude, longitude)
+    # Find nearby restaurants
+    result = restaurant_finder.find_nearby_restaurants(latitude, longitude)
     
-    if success:
-        # Get the latest data
-        latest_data = restaurant_store.get_latest()
-        
-        print(f"\nFound {latest_data['count']} restaurants:")
-        print(f"Search location: {latest_data['location']}")
-        print(f"Last updated: {latest_data['last_updated']}")
-        print(f"Search radius: {latest_data['search_radius_meters']}m")
+    if result['count'] > 0:
+        print(f"\nFound {result['count']} restaurants:")
+        print(f"Search location: {result['location']}")
+        print(f"Last updated: {result['last_updated']}")
+        print(f"Search radius: {result['search_radius_meters']}m")
         
         # Display first 5 restaurants
-        for i, restaurant in enumerate(latest_data['restaurants'][:5]):
+        for i, restaurant in enumerate(result['restaurants'][:5]):
             print(f"\n{i+1}. {restaurant['name']}")
             print(f"   Type: {restaurant.get('amenity', 'unknown')}")
             print(f"   Location: {restaurant['latitude']}, {restaurant['longitude']}")
@@ -425,12 +355,8 @@ def example_usage():
             if 'website' in restaurant:
                 print(f"   Website: {restaurant['website']}")
         
-        # Show stats
-        stats = restaurant_store.get_stats()
-        print(f"\nStats: {stats}")
-        
     else:
-        print("Failed to fetch restaurant data")
+        print("No restaurants found or search failed")
 
 
 if __name__ == "__main__":

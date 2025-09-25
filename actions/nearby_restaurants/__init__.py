@@ -1,11 +1,11 @@
 """
-Nearby Restaurants Module
+Restaurant Finder Module
 
-This module provides functionality to fetch, store, and retrieve nearby restaurants
-using OpenStreetMap's Overpass API.
+This module provides functionality to find nearby restaurants using OpenStreetMap's 
+Overpass API. Fetches and returns restaurant data immediately without storing.
 """
 
-from .store_nearby_restaurants import NearbyRestaurantsStore
+from .restaurant_finder import RestaurantFinder
 
-__all__ = ['NearbyRestaurantsStore']
-__version__ = '1.0.0'
+__all__ = ['RestaurantFinder']
+__version__ = '2.0.0'
