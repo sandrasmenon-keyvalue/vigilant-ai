@@ -43,16 +43,18 @@ python ai-module/demo.py
 ```
 ai-module/
 └── vision-model/
-    ├── face_detection.py          # Step 1: MediaPipe landmarks
-    ├── feature_extraction.py      # Step 2: EAR, MAR, etc.
-    ├── window_processing.py       # Step 3: Feature aggregation
-    ├── model_training.py          # Step 4: XGBoost training
-    ├── utils.py                  # Helper functions
-    ├── demo.py                   # Complete demo
-    ├── train_model.py            # Training script
-    ├── train_from_images.py      # Image-based training pipeline
-    ├── setup_resources.py        # Setup resources directory
-    └── inference_single_image.py # Single image inference
+    ├── face_detection.py              # Step 1: MediaPipe landmarks
+    ├── feature_extraction.py          # Step 2: EAR, MAR, etc.
+    ├── window_processing.py           # Step 3: Feature aggregation
+    ├── model_training.py              # Step 4: XGBoost training
+    ├── utils.py                      # Helper functions
+    ├── demo.py                       # Complete demo
+    ├── train_model.py                # Training script
+    ├── train_from_images.py          # Image-based training pipeline
+    ├── setup_resources.py            # Setup resources directory
+    ├── inference_single_image.py     # Single image inference
+    ├── health_score.py               # Health score calculation (0.6*dv + 0.4*hv)
+    └── integrated_health_analysis.py # Combined drowsiness + health analysis
 ```
 
 ## 🎮 Usage
@@ -73,7 +75,74 @@ python ai-module/vision-model/inference_single_image.py --model ./training_outpu
 
 # Process directory of images
 python ai-module/vision-model/inference_single_image.py --model ./training_output/models/drowsiness_model.pkl --scaler ./training_output/models/feature_scaler.pkl --directory ./test_images --output results.json
+```
 
+### Health Score Analysis
+```bash
+# Demo health score calculation
+python ai-module/vision-model/health_demo.py
+
+# Analyze image sequence with health metrics (5 frames/second + 1 health metric/second)
+python ai-module/vision-model/integrated_health_analysis.py \
+    --model ./training_output/models/drowsiness_model.pkl \
+    --scaler ./training_output/models/feature_scaler.pkl \
+    --images frame1.jpg frame2.jpg frame3.jpg frame4.jpg frame5.jpg \
+    --health-metrics sample_health_metrics.json \
+    --output health_analysis.json
+
+# Analyze directory with health metrics
+python ai-module/vision-model/integrated_health_analysis.py \
+    --model ./training_output/models/drowsiness_model.pkl \
+    --scaler ./training_output/models/feature_scaler.pkl \
+    --directory ./test_images \
+    --health-metrics sample_health_metrics.json \
+    --output health_analysis.json
+
+# Custom weights (default: 0.6*dv + 0.4*hv)
+python ai-module/vision-model/integrated_health_analysis.py \
+    --model ./training_output/models/drowsiness_model.pkl \
+    --scaler ./training_output/models/feature_scaler.pkl \
+    --images frame1.jpg frame2.jpg frame3.jpg frame4.jpg frame5.jpg \
+    --health-metrics sample_health_metrics.json \
+    --dv-weight 0.7 --hv-weight 0.3
 ```
 
 The system outputs a drowsiness score between 0 (not drowsy) and 1 (drowsy) per image.
+
+## 🏥 Health Score System
+
+The health score system combines drowsiness detection with health metrics:
+
+### **Data Structure:**
+- **DV (Drowsiness Value)**: Calculated from 5 frames per second (drowsiness rate from 5 images)
+- **HV (Health Value)**: Calculated from health metrics per second (heart rate, SpO2, age, health condition)
+
+### **Health Score Formula:**
+```
+Health Score = 0.6 * DV + 0.4 * HV
+```
+
+### **Health Metrics Scoring:**
+- **Heart Rate**: 60-100 BPM = optimal (1.0), outside range = scaled down
+- **SpO2**: 95-100% = optimal (1.0), below 90% = critical (0.0)
+- **Age**: Younger = better (30 years = 1.0, older = gradual decline)
+- **Health Condition**: excellent(1.0) > good(0.8) > fair(0.6) > poor(0.4) > critical(0.2)
+
+### **Health Score Interpretations:**
+- **0.8-1.0**: Excellent Health
+- **0.6-0.8**: Good Health  
+- **0.4-0.6**: Fair Health
+- **0.2-0.4**: Poor Health
+- **0.0-0.2**: Critical Health
+
+### **Health Metrics JSON Format:**
+```json
+[
+  {
+    "heart_rate": 75,
+    "spo2": 98,
+    "age": 35,
+    "health_condition": "good"
+  }
+]
+```
