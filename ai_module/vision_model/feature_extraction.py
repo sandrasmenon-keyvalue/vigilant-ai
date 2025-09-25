@@ -66,11 +66,25 @@ class DrowsinessFeatureExtractor:
         vertical_2 = np.linalg.norm(p3 - p5)
         horizontal = np.linalg.norm(p1 - p4)
         
+        # Debug logging for EAR calculation
+        if self.frame_count % 10 == 0:  # Log every 10th frame to avoid spam
+            print(f"🔍 EAR Debug - Frame {self.frame_count}:")
+            print(f"   Points: p1={p1}, p2={p2}, p3={p3}, p4={p4}, p5={p5}, p6={p6}")
+            print(f"   Distances: v1={vertical_1:.3f}, v2={vertical_2:.3f}, h={horizontal:.3f}")
+            print(f"   Formula: ({vertical_1:.3f} + {vertical_2:.3f}) / (2 * {horizontal:.3f}) = {(vertical_1 + vertical_2) / (2.0 * horizontal):.3f}")
+        
         # Avoid division by zero
         if horizontal == 0:
             return 0.0
         
         ear = (vertical_1 + vertical_2) / (2.0 * horizontal)
+        
+        # Check for abnormal EAR values
+        if ear > 1.0:  # Normal EAR should be < 1.0
+            if self.frame_count % 20 == 0:  # Periodic warning
+                print(f"⚠️  HIGH EAR WARNING: {ear:.3f} (normal: 0.2-0.4)")
+                print(f"   This suggests coordinate scaling issues or wrong landmark selection")
+        
         return ear
     
     def calculate_mar(self, mouth_landmarks: List[Tuple[float, float, float]]) -> float:
@@ -165,24 +179,22 @@ class DrowsinessFeatureExtractor:
             
         self.blink_buffer.append(ear)
         
-        # Need at least 5 frames for better detection (was 3)
-        if len(self.blink_buffer) < 5:
+        # Need at least 3 frames for detection (adjusted for 2 FPS)
+        if len(self.blink_buffer) < 3:
             return False
         
-        # More robust blink detection: look for sustained drop and rise
-        # Pattern: HIGH → HIGH → LOW → HIGH → HIGH (center frame is blink)
-        recent_values = list(self.blink_buffer)[-5:]
+        # Simplified blink detection for low FPS: look for significant drop
+        # Pattern: HIGH → LOW → HIGH (center frame is blink)
+        recent_values = list(self.blink_buffer)[-3:]
         
         # Adaptive threshold based on recent EAR values
         avg_ear = sum(recent_values) / len(recent_values)
         adaptive_threshold = min(self.ear_threshold, avg_ear * 0.7)  # 70% of average
         
-        # Blink detection: significant drop in middle frame
+        # Blink detection: significant drop in middle frame (3-frame pattern for 2 FPS)
         if (recent_values[0] > adaptive_threshold and
-            recent_values[1] > adaptive_threshold and  
-            recent_values[2] < adaptive_threshold and  # Blink frame
-            recent_values[3] > adaptive_threshold and
-            recent_values[4] > adaptive_threshold):
+            recent_values[1] < adaptive_threshold and  # Blink frame  
+            recent_values[2] > adaptive_threshold):
             
             # Avoid counting same blink multiple times
             if timestamp - self.last_blink_time > 0.2:  # 200ms minimum between blinks
@@ -190,7 +202,7 @@ class DrowsinessFeatureExtractor:
                 self.last_blink_time = timestamp
                 
                 # Debug logging
-                print(f"🔍 BLINK DETECTED! Frame {self.frame_count}, EAR pattern: {[f'{v:.3f}' for v in recent_values]} (threshold: {adaptive_threshold:.3f})")
+                print(f"🔍 BLINK DETECTED! Frame {self.frame_count}, EAR pattern: {[f'{v:.3f}' for v in recent_values]} (threshold: {adaptive_threshold:.3f}, 2 FPS optimized)")
                 
                 return True
         
@@ -264,8 +276,28 @@ class DrowsinessFeatureExtractor:
         # Calculate nod frequency (nods per minute)
         nod_frequency = self.nod_count / max(timestamp / 60.0, 1.0) if timestamp > 0 else 0
         
-        # Calculate eye closure percentage
-        eye_closure = 1.0 - min(avg_ear / self.ear_threshold, 1.0)
+        # Calculate eye closure percentage (adaptive to actual EAR range)
+        # For high EAR values, use relative closure based on recent averages
+        if len(self.blink_buffer) >= 3:
+            recent_ears = list(self.blink_buffer)[-10:]  # Last 10 EAR values
+            max_ear = max(recent_ears)  # Eyes most open
+            min_ear = min(recent_ears)  # Eyes most closed
+            ear_range = max_ear - min_ear
+            
+            if ear_range > 0.1:  # If there's significant variation
+                # Normalize current EAR relative to observed range
+                normalized_openness = (avg_ear - min_ear) / ear_range
+                eye_closure = 1.0 - max(0.0, min(1.0, normalized_openness))
+            else:
+                # Fallback: use traditional method with adaptive threshold
+                adaptive_threshold = max(self.ear_threshold, avg_ear * 0.7)
+                eye_closure = max(0.0, 1.0 - (avg_ear / adaptive_threshold))
+        else:
+            # Not enough data yet
+            eye_closure = 0.0
+        
+        # Debug logging for eye closure
+        print(f"👁️  EAR Debug: avg={avg_ear:.3f}, closure={eye_closure:.3f}, buffer_size={len(self.blink_buffer)}")
         
         # Calculate yawn indicator
         yawn_indicator = 1.0 if mar > self.mar_threshold else 0.0

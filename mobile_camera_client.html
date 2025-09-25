@@ -646,10 +646,10 @@
             if (isStreaming) return;
             
             isStreaming = true;
-            const frameRate = parseInt(document.getElementById('frameRate').value);
-            const interval = 1000 / frameRate; // Convert to milliseconds
+            const frameRate = 2; // Reduced to 2 FPS to minimize processing load
+            const interval = 1000 / frameRate; // Convert to milliseconds = 500ms
             
-            log(`Starting frame streaming at ${frameRate} FPS`);
+            log(`Starting frame streaming at ${frameRate} FPS (reduced processing load)`);
             
             function captureAndSend() {
                 if (!isStreaming || !websocket || websocket.readyState !== WebSocket.OPEN) {

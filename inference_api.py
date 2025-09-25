@@ -30,8 +30,11 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'ai-module', 'vision-mod
 
 # Import AI modules
 try:
-    from face_detection import FaceLandmarkDetector
-    from feature_extraction import DrowsinessFeatureExtractor
+    from face_detection import FaceLandmarkDetector  # Keep for compatibility
+    from face_landmarker_live import LiveFaceLandmarkerDetector, FaceLandmarkDetector as NewFaceLandmarkDetector
+    # from feature_extraction import DrowsinessFeatureExtractor  # OLD
+    # from enhanced_feature_extraction import EnhancedDrowsinessFeatureExtractor as DrowsinessFeatureExtractor  # ENHANCED
+    from drowsiness_optimized_extraction import DrowsinessOptimizedExtractor as DrowsinessFeatureExtractor  # OPTIMIZED - Stronger signals!
     from window_processing import SlidingWindowProcessor
     import pickle
     import joblib
@@ -67,6 +70,7 @@ feature_extractor: Optional[DrowsinessFeatureExtractor] = None
 window_processor: Optional[SlidingWindowProcessor] = None
 drowsiness_model = None
 feature_scaler = None
+score_amplifier: Optional[DrowsinessScoreAmplifier] = None
 
 
 # Pydantic models
@@ -115,16 +119,21 @@ class BatchInferenceRequest(BaseModel):
 @app.on_event("startup")
 async def startup_event():
     """Initialize AI components on startup."""
-    global face_detector, feature_extractor, window_processor, drowsiness_model, feature_scaler
+    global face_detector, feature_extractor, window_processor, drowsiness_model, feature_scaler, score_amplifier
     
     logger.info("🚀 Starting Vigilant AI Inference Service")
     
     try:
         # Initialize AI components
         logger.info("Loading AI modules...")
-        face_detector = FaceLandmarkDetector(
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5
+        # Initialize advanced face detector with MediaPipe Face Landmarker  
+        logger.info("🚀 Initializing MediaPipe Face Landmarker (478 landmarks, live streaming optimized)")
+        face_detector = NewFaceLandmarkDetector(
+            min_face_detection_confidence=0.5,
+            min_face_presence_confidence=0.5,
+            min_tracking_confidence=0.5,
+            num_faces=1,
+            output_blendshapes=True  # Enable facial expressions for enhanced drowsiness detection
         )
         
         feature_extractor = DrowsinessFeatureExtractor(
@@ -136,6 +145,9 @@ async def startup_event():
             window_size_seconds=5.0,
             fps=5.0
         )
+        
+        # Initialize drowsiness score amplifier for better responsiveness
+        score_amplifier = DrowsinessScoreAmplifier()
         
         # Load trained model and scaler
         model_path = "trained_models/vision-training/drowsiness_model.pkl"
@@ -330,15 +342,34 @@ def process_frame_inference(image: np.ndarray, timestamp: float = None) -> Infer
                     prediction_time = time.time() - prediction_start
                     
                     # FIXED: Swap the interpretation - model outputs [drowsy, alert] not [alert, drowsy]
-                    drowsiness_score = probabilities[0][0]  # Probability of drowsy class (class 0)
+                    original_drowsiness_score = probabilities[0][0]  # Probability of drowsy class (class 0)
                     alert_probability = probabilities[0][1]  # Probability of alert class (class 1)
                     confidence = max(probabilities[0]) * 2 - 1  # Convert to 0-1 scale
                     
                     logger.info(f"✅ Model prediction completed (time: {prediction_time:.3f}s):")
                     logger.info(f"   🟢 Alert probability: {alert_probability:.4f}")
-                    logger.info(f"   🔴 Drowsy probability: {drowsiness_score:.4f}")
+                    logger.info(f"   🔴 Original drowsy probability: {original_drowsiness_score:.4f}")
                     logger.info(f"   🎯 Confidence: {confidence:.4f}")
                     logger.info(f"   📊 Raw probabilities: {probabilities[0]} [drowsy, alert]")
+                    
+                    # Apply drowsiness score amplification for better responsiveness
+                    if score_amplifier:
+                        blendshapes = getattr(feature_extractor, '_last_blendshapes', None) if hasattr(feature_extractor, '_last_blendshapes') else None
+                        drowsiness_score, amplification_reason = score_amplifier.amplify_score(
+                            original_score=original_drowsiness_score,
+                            features=features,
+                            blendshapes=blendshapes
+                        )
+                        
+                        if drowsiness_score != original_drowsiness_score:
+                            boost_factor = drowsiness_score / original_drowsiness_score if original_drowsiness_score > 0 else 1.0
+                            logger.info(f"🚀 Score amplified: {original_drowsiness_score:.4f} → {drowsiness_score:.4f} (boost: {boost_factor:.2f}x)")
+                            logger.info(f"   📋 Reason: {amplification_reason}")
+                        else:
+                            logger.info(f"➡️ No amplification applied: {amplification_reason}")
+                    else:
+                        drowsiness_score = original_drowsiness_score
+                        logger.warning("⚠️ Score amplifier not available, using original score")
                     
                 except Exception as e:
                     prediction_time = time.time() - prediction_start

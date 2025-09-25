@@ -1,0 +1,37 @@
+{
+  "model_features": [
+    "avg_ear",
+    "blink_detected",
+    "blink_frequency",
+    "eye_closure",
+    "face_detected",
+    "head_pitch",
+    "head_roll",
+    "head_yaw",
+    "left_ear",
+    "mar",
+    "nod_detected",
+    "nod_frequency",
+    "right_ear",
+    "yawn_indicator"
+  ],
+  "feature_count": 14,
+  "feature_descriptions": {
+    "avg_ear": "Average Eye Aspect Ratio (both eyes)",
+    "left_ear": "Left Eye Aspect Ratio",
+    "right_ear": "Right Eye Aspect Ratio",
+    "mar": "Mouth Aspect Ratio",
+    "head_pitch": "Head pitch angle (degrees)",
+    "head_yaw": "Head yaw angle (degrees)",
+    "head_roll": "Head roll angle (degrees)",
+    "blink_detected": "Binary: 1 if blink detected, 0 otherwise",
+    "nod_detected": "Binary: 1 if head nod detected, 0 otherwise",
+    "blink_frequency": "Blinks per minute",
+    "nod_frequency": "Head nods per minute",
+    "eye_closure": "Eye closure level (0=open, 1=closed)",
+    "yawn_indicator": "Binary: 1 if yawning, 0 otherwise",
+    "face_detected": "Binary: 1 if face detected, 0 otherwise"
+  },
+  "model_compatibility": "XGBoost drowsiness detection model",
+  "note": "These features are extracted by DrowsinessFeatureExtractor and expected by the trained model"
+}
