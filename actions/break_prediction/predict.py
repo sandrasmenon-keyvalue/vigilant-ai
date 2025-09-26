@@ -220,7 +220,7 @@ class BreakPredictionService:
             start_time=start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
             current_time=current_time_info["current_time"],
             driving_duration_hours=f"{driving_duration:.1f}",
-            sleep_debt=formatted_sleep_debt,
+            sleep_debt=4,
             age=age,
             health_conditions=formatted_health,
             previous_break_times=formatted_previous_times
