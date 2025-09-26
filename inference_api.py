@@ -37,12 +37,12 @@ except ImportError as e:
 
 # Import AI modules
 try:
-    from face_detection import FaceLandmarkDetector  # Keep for compatibility
-    from face_landmarker_live import LiveFaceLandmarkerDetector, FaceLandmarkDetector as NewFaceLandmarkDetector
+    from ai_module.vision_model.face_landmarker_live import FaceLandmarkDetector  # Keep for compatibility
+    from ai_module.vision_model.face_landmarker_live import LiveFaceLandmarkerDetector, FaceLandmarkDetector as NewFaceLandmarkDetector
     # from feature_extraction import DrowsinessFeatureExtractor  # OLD
     # from enhanced_feature_extraction import EnhancedDrowsinessFeatureExtractor as DrowsinessFeatureExtractor  # ENHANCED
-    from drowsiness_optimized_extraction import DrowsinessOptimizedExtractor as DrowsinessFeatureExtractor  # OPTIMIZED - Stronger signals!
-    from window_processing import SlidingWindowProcessor
+    from ai_module.vision_model.drowsiness_optimized_extraction import DrowsinessOptimizedExtractor as DrowsinessFeatureExtractor  # OPTIMIZED - Stronger signals!
+    from ai_module.vision_model.window_processing import SlidingWindowProcessor
     import pickle
     import joblib
 except ImportError as e:
@@ -155,8 +155,8 @@ async def startup_event():
         
         
         # Load trained model and scaler
-        model_path = "trained_models/vision-training/drowsiness_model.pkl"
-        scaler_path = "trained_models/vision-training/feature_scaler.pkl"
+        model_path = "trained_models/vision-training/enhanced_drowsiness_model.pkl"
+        scaler_path = "trained_models/vision-training/enhanced_feature_scaler.pkl"
         
         if os.path.exists(model_path) and os.path.exists(scaler_path):
             # Load the trained model (try joblib first, then pickle)
@@ -359,8 +359,8 @@ def process_frame_inference(image: np.ndarray, timestamp: float = None) -> Infer
                     prediction_time = time.time() - prediction_start
                     
                     # FIXED: Swap the interpretation - model outputs [drowsy, alert] not [alert, drowsy]
-                    original_drowsiness_score = probabilities[0][0]  # Probability of drowsy class (class 0)
-                    alert_probability = probabilities[0][1]  # Probability of alert class (class 1)
+                    original_drowsiness_score = probabilities[0][1]  # Probability of drowsy class (class 0)
+                    alert_probability = probabilities[0][0]  # Probability of alert class (class 1)
                     confidence = max(probabilities[0]) * 2 - 1  # Convert to 0-1 scale
                     
                     logger.info(f"✅ Model prediction completed (time: {prediction_time:.3f}s):")

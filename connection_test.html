@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vigilant AI - Connection Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Vigilant AI Connection Test</h1>
+        
+        <div class="info">
+            <strong>Server Configuration:</strong><br>
+            • Inference API: http://192.168.2.220:8002<br>
+            • Live Stream Service: https://192.168.2.220:8001<br>
+            • WebSocket: wss://192.168.2.220:8001/ws/mobile_stream
+        </div>
+
+        <h2>Connection Tests</h2>
+        <button onclick="testInferenceAPI()">Test Inference API</button>
+        <button onclick="testLiveStreamService()">Test Live Stream Service</button>
+        <button onclick="testWebSocket()">Test WebSocket Connection</button>
+        <button onclick="clearLog()">Clear Log</button>
+
+        <div id="results"></div>
+        <div id="log" class="log"></div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${message}\n`;
+            logDiv.textContent += logEntry;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            
+            console.log(message);
+        }
+
+        function showResult(message, isSuccess) {
+            const resultsDiv = document.getElementById('results');
+            const statusClass = isSuccess ? 'success' : 'error';
+            resultsDiv.innerHTML = `<div class="${statusClass}">${message}</div>`;
+        }
+
+        function clearLog() {
+            document.getElementById('log').textContent = '';
+            document.getElementById('results').innerHTML = '';
+        }
+
+        async function testInferenceAPI() {
+            log('Testing Inference API connection...');
+            try {
+                const response = await fetch('http://192.168.2.220:8002/inference/health');
+                if (response.ok) {
+                    const data = await response.json();
+                    log(`✅ Inference API: ${data.status} - ${data.service} v${data.version}`);
+                    log(`   AI Components: Face Detector: ${data.ai_components.face_detector}, Model: ${data.ai_components.drowsiness_model}`);
+                    showResult('✅ Inference API connection successful!', true);
+                } else {
+                    log(`❌ Inference API returned status: ${response.status}`);
+                    showResult('❌ Inference API connection failed!', false);
+                }
+            } catch (error) {
+                log(`❌ Inference API error: ${error.message}`);
+                showResult('❌ Inference API connection failed!', false);
+            }
+        }
+
+        async function testLiveStreamService() {
+            log('Testing Live Stream Service connection...');
+            try {
+                const response = await fetch('https://192.168.2.220:8001/health');
+                if (response.ok) {
+                    const data = await response.json();
+                    log(`✅ Live Stream Service: ${data.status} - ${data.service} v${data.version}`);
+                    log(`   Components: Camera Manager: ${data.components.camera_manager}, Inference Client: ${data.components.inference_client}`);
+                    log(`   Inference API Connected: ${data.components.inference_api_connected}`);
+                    showResult('✅ Live Stream Service connection successful!', true);
+                } else {
+                    log(`❌ Live Stream Service returned status: ${response.status}`);
+                    showResult('❌ Live Stream Service connection failed!', false);
+                }
+            } catch (error) {
+                log(`❌ Live Stream Service error: ${error.message}`);
+                showResult('❌ Live Stream Service connection failed!', false);
+            }
+        }
+
+        function testWebSocket() {
+            log('Testing WebSocket connection...');
+            try {
+                const ws = new WebSocket('wss://192.168.2.220:8001/ws/mobile_stream');
+                
+                ws.onopen = function() {
+                    log('✅ WebSocket connection opened successfully');
+                    
+                    // Send test configuration
+                    const config = {
+                        type: 'mobile_config',
+                        stream_id: 'test_connection',
+                        device_info: { userAgent: navigator.userAgent },
+                        frame_rate: 5
+                    };
+                    
+                    ws.send(JSON.stringify(config));
+                    log('📤 Sent test configuration to server');
+                };
+                
+                ws.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        log(`📥 Received: ${JSON.stringify(data)}`);
+                        
+                        if (data.type === 'config_ack') {
+                            log('✅ Server acknowledged configuration');
+                            showResult('✅ WebSocket connection successful!', true);
+                            ws.close();
+                        }
+                    } catch (e) {
+                        log(`❌ Error parsing WebSocket message: ${e.message}`);
+                    }
+                };
+                
+                ws.onclose = function() {
+                    log('🔌 WebSocket connection closed');
+                };
+                
+                ws.onerror = function(error) {
+                    log(`❌ WebSocket error: ${error}`);
+                    showResult('❌ WebSocket connection failed!', false);
+                };
+                
+                // Close connection after 10 seconds if no response
+                setTimeout(() => {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        log('⏰ WebSocket test timeout - closing connection');
+                        ws.close();
+                    }
+                }, 10000);
+                
+            } catch (error) {
+                log(`❌ WebSocket connection error: ${error.message}`);
+                showResult('❌ WebSocket connection failed!', false);
+            }
+        }
+
+        // Auto-run tests on page load
+        window.onload = function() {
+            log('🚀 Starting connection tests...');
+            setTimeout(testInferenceAPI, 1000);
+            setTimeout(testLiveStreamService, 2000);
+            setTimeout(testWebSocket, 3000);
+        };
+    </script>
+</body>
+</html>
