@@ -390,7 +390,7 @@ class StreamFrameProcessor:
         self.stream_id = stream_id
         self.inference_client = inference_client
         self.frame_count = 0
-        self.last_drowsiness_score = 0.0
+        self.last_drowsiness_score = 0.0  # Will be updated after first batch processing
         self.avg_drowsiness_score = 0.0
         self.max_drowsiness_score = 0.0
         self.alert_history = deque(maxlen=10)
@@ -539,26 +539,36 @@ class StreamFrameProcessor:
             else:
                 logger.debug(f"⏳ Waiting for more frames ({len(self.frame_buffer)}/{self.batch_size})")
             
-            # Only return processing indicator every few frames to avoid spam
-            if self.frame_count % 3 == 0:  # Show processing every 3rd frame
-                return DrowsinessAlert(
-                    stream_id=self.stream_id,
-                    timestamp=datetime.now().isoformat(),
-                    drowsiness_score=self.last_drowsiness_score,
-                    confidence=face_quality.get('face_confidence', 0.0),
-                    is_drowsy=self.last_drowsiness_score > 0.5,
-                    alert_level="processing",
-                    features={
-                        "face_confidence": face_quality.get('face_confidence', 0.0),
-                        "buffer_size": len(self.frame_buffer),
-                        "batch_size": self.batch_size,
-                        "face_detected": True
-                    },
-                    frame_count=self.frame_count
-                )
+            # Always return current drowsiness score to keep mobile client updated
+            # Use the last processed score (even if 0.0) to show real-time updates
+            current_score = self.last_drowsiness_score
             
-            # Return None for intermediate frames to reduce noise
-            return None
+            # Determine alert level based on current score
+            if current_score >= 0.7:
+                alert_level = "critical"
+            elif current_score >= 0.5:
+                alert_level = "high"
+            elif current_score >= 0.3:
+                alert_level = "medium"
+            else:
+                alert_level = "low"
+            
+            return DrowsinessAlert(
+                stream_id=self.stream_id,
+                timestamp=datetime.now().isoformat(),
+                drowsiness_score=current_score,
+                confidence=face_quality.get('face_confidence', 0.0),
+                is_drowsy=current_score > 0.5,
+                alert_level=alert_level,
+                features={
+                    "face_confidence": face_quality.get('face_confidence', 0.0),
+                    "buffer_size": len(self.frame_buffer),
+                    "batch_size": self.batch_size,
+                    "face_detected": True,
+                    "processing_status": "buffering"
+                },
+                frame_count=self.frame_count
+            )
                 
         except Exception as e:
             logger.error(f"Error processing frame for {self.stream_id}: {e}")
@@ -593,7 +603,22 @@ class StreamFrameProcessor:
         self.frame_buffer.clear()
         
         try:
+            # Check if inference client is available
+            if not self.inference_client:
+                logger.error(f"❌ Inference client not available for {self.stream_id}")
+                return DrowsinessAlert(
+                    stream_id=self.stream_id,
+                    timestamp=datetime.now().isoformat(),
+                    drowsiness_score=0.5,
+                    confidence=0.0,
+                    is_drowsy=False,
+                    alert_level="error",
+                    features={"error": "Inference client not available"},
+                    frame_count=self.frame_count
+                )
+            
             # Send batch to video stream API
+            logger.info(f"📡 Sending batch of {len(frames)} frames to inference API for {self.stream_id}")
             result = await self.inference_client.batch_infer_frames(frames)
             
             if result and result.get('success'):
@@ -685,15 +710,23 @@ class StreamFrameProcessor:
                 return alert
                 
             else:
-                logger.error(f"Batch processing failed for {self.stream_id}: {result.get('error', 'Unknown error')}")
+                error_msg = result.get('error', 'Unknown error') if result else 'No response from inference API'
+                logger.error(f"❌ Batch processing failed for {self.stream_id}: {error_msg}")
+                
+                # Return last known score or neutral default with error status
+                fallback_score = self.last_drowsiness_score if hasattr(self, 'last_drowsiness_score') else 0.5
                 return DrowsinessAlert(
                     stream_id=self.stream_id,
                     timestamp=datetime.now().isoformat(),
-                    drowsiness_score=0.5,
+                    drowsiness_score=fallback_score,
                     confidence=0.0,
-                    is_drowsy=False,
+                    is_drowsy=fallback_score > 0.5,
                     alert_level="error",
-                    features={"batch_error": result.get('error', 'Unknown error')},
+                    features={
+                        "batch_error": error_msg,
+                        "fallback_score": fallback_score,
+                        "inference_api_status": "failed"
+                    },
                     frame_count=self.frame_count
                 )
                 

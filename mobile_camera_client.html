@@ -318,7 +318,7 @@
             <h3 style="margin-bottom: 15px;">📡 Connection Settings</h3>
             <div class="config-item">
                 <label>Server URL:</label>
-                <input type="text" id="serverUrl" value="wss://192.168.6.108:8001" placeholder="wss://your-server-ip:8001">
+                <input type="text" id="serverUrl" value="wss://192.168.2.220:8001" placeholder="wss://your-server-ip:8001">
                 <button onclick="clearStoredUrl()" style="margin-left: 5px; padding: 5px 10px; font-size: 12px; background: rgba(255,255,255,0.2); border: none; color: white; border-radius: 3px; cursor: pointer;">Clear Cache</button>
             </div>
             <div class="config-item">
@@ -425,7 +425,7 @@
         // Clear stored URL cache
         function clearStoredUrl() {
             localStorage.removeItem('vigilant-ai-server-url');
-            document.getElementById('serverUrl').value = 'wss://192.168.6.108:8001';
+            document.getElementById('serverUrl').value = 'wss://192.168.2.220:8001';
             log('🗑️ Cleared cached server URL');
             alert('✅ URL cache cleared! Default WSS URL restored.');
         }
