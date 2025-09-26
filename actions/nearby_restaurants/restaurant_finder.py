@@ -35,13 +35,14 @@ class RestaurantFinder:
         
         logger.info(f"Initialized RestaurantFinder with {radius_meters}m radius")
     
-    def find_nearby_restaurants(self, latitude: float, longitude: float) -> Dict:
+    def find_nearby_restaurants(self, latitude: float, longitude: float, break_interval_id: str) -> Dict:
         """
         Find and return nearby restaurants immediately.
         
         Args:
             latitude: Latitude coordinate (-90 to 90)
             longitude: Longitude coordinate (-180 to 180)
+            break_interval_id: Identifier for the break interval
             
         Returns:
             Dict containing:
@@ -50,6 +51,7 @@ class RestaurantFinder:
             - 'last_updated': datetime or None
             - 'count': int
             - 'search_radius_meters': int
+            - 'break_interval_id': str
         """
         try:
             # Validate coordinates
@@ -60,7 +62,8 @@ class RestaurantFinder:
                     'location': None,
                     'last_updated': None,
                     'count': 0,
-                    'search_radius_meters': self._radius_meters
+                    'search_radius_meters': self._radius_meters,
+                    'break_interval_id': break_interval_id
                 }
             
             logger.info(f"Finding restaurants near lat={latitude}, lon={longitude}")
@@ -73,14 +76,15 @@ class RestaurantFinder:
             
             # Return results immediately
             return {
-                'restaurants': restaurants,
+                'restaurants': restaurants[:5],
                 'location': {
                     'latitude': latitude,
                     'longitude': longitude
                 },
                 'last_updated': last_updated,
                 'count': len(restaurants),
-                'search_radius_meters': self._radius_meters
+                'search_radius_meters': self._radius_meters,
+                'break_interval_id': break_interval_id
             }
             
         except Exception as e:
@@ -90,7 +94,8 @@ class RestaurantFinder:
                 'location': None,
                 'last_updated': None,
                 'count': 0,
-                'search_radius_meters': self._radius_meters
+                'search_radius_meters': self._radius_meters,
+                'break_interval_id': break_interval_id
             }
     
     def _fetch_restaurants_from_osm(self, lat: float, lon: float) -> List[Dict]:
@@ -306,13 +311,15 @@ def example_usage():
     print(f"Searching for restaurants near {latitude}, {longitude}")
     
     # Find nearby restaurants
-    result = restaurant_finder.find_nearby_restaurants(latitude, longitude)
+    break_interval_id = "break_001"  # Example break interval ID
+    result = restaurant_finder.find_nearby_restaurants(latitude, longitude, break_interval_id)
     
     if result['count'] > 0:
         print(f"\nFound {result['count']} restaurants:")
         print(f"Search location: {result['location']}")
         print(f"Last updated: {result['last_updated']}")
         print(f"Search radius: {result['search_radius_meters']}m")
+        print(f"Break interval ID: {result['break_interval_id']}")
         
         # Display first 5 restaurants
         for i, restaurant in enumerate(result['restaurants'][:5]):

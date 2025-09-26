@@ -8,9 +8,22 @@ import json
 import logging
 import os
 import time
+from datetime import datetime, timezone
 from typing import Dict, Any, Callable, Optional
 import websockets
 from websockets.exceptions import ConnectionClosed, WebSocketException
+
+# Import break prediction service
+from actions.break_prediction.predict import (
+    BreakPredictionService, 
+    SleepDebt, 
+    HealthConditions,
+    create_sleep_debt,
+    create_health_conditions
+)
+
+# Import restaurant finder service
+from actions.nearby_restaurants.restaurant_finder import RestaurantFinder
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +63,10 @@ class VitalsWebSocketClient:
         self.data_callback: Optional[Callable] = None
         self.connection_callback: Optional[Callable] = None
         self.disconnection_callback: Optional[Callable] = None
+        self.break_prediction_service = BreakPredictionService()
+        
+        # Initialize restaurant finder service
+        self.restaurant_finder = RestaurantFinder(radius_meters=1500)  # Default 1500m radius
         
         # Build authentication headers
         self._build_auth_headers()
@@ -191,8 +208,36 @@ class VitalsWebSocketClient:
             # Debug: Log the raw payload received
             logger.info(f"Raw WebSocket payload received: {data}")
             
-            # Check if this is a vitals event
+            # Check event type and handle accordingly
             event_type = data.get('type', '')
+            
+            # Handle break data request
+            if event_type == 'request_break_data':
+                logger.info(f"Received break data request: {event_type}")
+                # Extract payload data
+                if 'payload' in data and isinstance(data['payload'], dict):
+                    payload_data = data['payload']
+                else:
+                    payload_data = data
+                
+                # Handle the break data request
+                await self._handle_break_data_request(payload_data)
+                return
+            
+            # Handle restaurant location request
+            if event_type == 'request_restaurant_location':
+                logger.info(f"Received restaurant location request: {event_type}")
+                # Extract payload data
+                if 'payload' in data and isinstance(data['payload'], dict):
+                    payload_data = data['payload']
+                else:
+                    payload_data = data
+                
+                # Handle the restaurant location request
+                await self._handle_restaurant_location_request(payload_data)
+                return
+            
+            # Handle vitals events
             if event_type != 'inference.vital_info':
                 logger.debug(f"Ignoring non-vitals event: {event_type}")
                 return
@@ -259,6 +304,194 @@ class VitalsWebSocketClient:
             logger.error(f"Invalid data format in message: {e}")
         except Exception as e:
             logger.error(f"Error processing message: {e}")
+    
+    def _convert_unix_timestamp_to_datetime(self, unix_timestamp: int) -> datetime:
+        """Convert Unix timestamp (milliseconds) to datetime object with UTC timezone."""
+        # Convert milliseconds to seconds
+        timestamp_seconds = unix_timestamp / 1000.0
+        return datetime.fromtimestamp(timestamp_seconds, tz=timezone.utc)
+    
+    def _extract_health_conditions(self, user_health_profile: Dict[str, Any]) -> HealthConditions:
+        """Extract health conditions from user health profile."""
+        health_factors = user_health_profile.get('healthFactors', {})
+        
+        return create_health_conditions(
+            diabetes=health_factors.get('diabetes', False),
+            hypertension=health_factors.get('hypertension', False),
+            heart_disease=health_factors.get('heart_disease', False),
+            respiratory_condition=health_factors.get('respiratory_condition', False),
+            smoker=health_factors.get('smoker', False)
+        )
+    
+    def _extract_age_from_profile(self, user_health_profile: Dict[str, Any]) -> int:
+        """Extract age from user health profile, with fallback to default."""
+        # Try to get age from profile, default to 30 if not provided
+        age = user_health_profile.get('age', 30)
+        
+        # Validate age range
+        if not isinstance(age, int) or age < 16 or age > 120:
+            logger.warning(f"Invalid age {age}, using default age 30")
+            age = 30
+            
+        return age
+    
+    async def _handle_break_data_request(self, payload_data: Dict[str, Any]):
+        """Handle request_break_data message type."""
+        try:
+            # Extract required fields
+            start_time_unix = payload_data.get('startTime')
+            sleep_debt_minutes = payload_data.get('sleepDebt', 0)
+            break_data = payload_data.get('breakData', [])
+            user_health_profile = payload_data.get('userHealthProfile', {})
+            user_id = payload_data.get('userId', 'unknown')
+            session_id = payload_data.get('sessionId', 'unknown')
+            
+            logger.info(f"Processing break data request for user {user_id}, session {session_id}")
+            
+            # Validate required fields
+            if start_time_unix is None:
+                raise ValueError("startTime is required")
+            
+            # Convert Unix timestamp to datetime
+            start_time = self._convert_unix_timestamp_to_datetime(start_time_unix)
+            
+            # Convert sleep debt from minutes to seconds and create SleepDebt object
+            sleep_debt_seconds = sleep_debt_minutes * 60
+            sleep_debt = create_sleep_debt(duration_seconds=sleep_debt_seconds)
+            
+            # Extract health conditions and age
+            health_conditions = self._extract_health_conditions(user_health_profile)
+            age = self._extract_age_from_profile(user_health_profile)
+            
+            # Convert break_data to previous break times (if any)
+            previous_break_times = break_data if isinstance(break_data, list) else []
+            
+            logger.info(f"Break prediction input: start_time={start_time}, sleep_debt={sleep_debt_minutes}min, age={age}, health_conditions={health_conditions.__dict__}")
+            
+            # Check if break prediction service is available
+            if self.break_prediction_service is None:
+                raise RuntimeError("Break prediction service is not available")
+            
+            # Get break predictions
+            prediction_result = self.break_prediction_service.predict_next_breaks(
+                start_time=start_time,
+                sleep_debt=sleep_debt,
+                age=age,
+                health_conditions=health_conditions,
+                previous_break_times=previous_break_times
+            )
+            
+            # Create response message
+            response_message = {
+                "type": "response_break_data",
+                "payload": {
+                    "userId": user_id,
+                    "sessionId": session_id,
+                    "breakTimes": prediction_result["break_times"],
+                    "metadata": prediction_result["metadata"],
+                    "status": "success"
+                }
+            }
+            
+            # Send response back through WebSocket
+            await self.send_message(response_message)
+            logger.info(f"DB_ Successfully sent break prediction response {response_message['payload']}")
+            
+        except Exception as e:
+            logger.error(f"Error handling break data request: {e}")
+            
+            # Send error response
+            error_response = {
+                "type": "response_break_data",
+                "payload": {
+                    "userId": payload_data.get('userId', 'unknown'),
+                    "sessionId": payload_data.get('sessionId', 'unknown'),
+                    "status": "error",
+                    "error": str(e)
+                }
+            }
+            
+            try:
+                await self.send_message(error_response)
+            except Exception as send_error:
+                logger.error(f"Failed to send error response: {send_error}")
+    
+    async def _handle_restaurant_location_request(self, payload_data: Dict[str, Any]):
+        """Handle request_restaurant_location message type."""
+        try:
+            # Extract required fields
+            user_id = payload_data.get('userId')
+            break_interval_id = payload_data.get('break_interval_id')
+            latitude = payload_data.get('latitude')
+            longitude = payload_data.get('longitude')
+            
+            logger.info(f"Processing restaurant location request for break interval {break_interval_id}")
+            
+            # Validate required fields
+            if break_interval_id is None:
+                raise ValueError("break_interval_id is required")
+            if latitude is None:
+                raise ValueError("latitude is required")
+            if longitude is None:
+                raise ValueError("longitude is required")
+            
+            # Convert to float and validate coordinates
+            try:
+                lat_float = float(latitude)
+                lon_float = float(longitude)
+            except (ValueError, TypeError):
+                raise ValueError("latitude and longitude must be valid numbers")
+            
+            logger.info(f"Finding restaurants near lat={lat_float}, lon={lon_float} for break interval {break_interval_id}")
+            
+            # Find nearby restaurants using the restaurant finder service
+            restaurant_result = self.restaurant_finder.find_nearby_restaurants(
+                latitude=lat_float,
+                longitude=lon_float,
+                break_interval_id=break_interval_id
+            )
+            
+            # Create response message
+            response_message = {
+                "type": "return_restaurant_location",
+                "payload": {
+                    "userId": user_id,
+                    "id": break_interval_id,
+                    "restaurants": restaurant_result["restaurants"],
+                    "location": restaurant_result["location"],
+                    "count": restaurant_result["count"],
+                    "search_radius_meters": restaurant_result["search_radius_meters"],
+                    "last_updated": restaurant_result["last_updated"].isoformat() if restaurant_result["last_updated"] else None,
+                    "status": "success"
+                }
+            }
+            
+            # Send response back through WebSocket
+            await self.send_message(response_message)
+            logger.info(f"DB_ Successfully sent restaurant location response for break interval {break_interval_id} with payload {response_message['payload']}")
+            
+        except Exception as e:
+            logger.error(f"Error handling restaurant location request: {e}")
+            
+            # Send error response
+            error_response = {
+                "type": "return_restaurant_location",
+                "data": {
+                    "break_interval_id": payload_data.get('break_interval_id', 'unknown'),
+                    "restaurants": [],
+                    "location": None,
+                    "count": 0,
+                    "search_radius_meters": 1000,
+                    "last_updated": None,
+                    "status": "error",
+                    "error": str(e)
+                }
+            }
+            
+            try:
+                await self.send_message(error_response)
+            except Exception as send_error:
+                logger.error(f"Failed to send restaurant error response: {send_error}")
     
     async def run_with_reconnect(self):
         """
@@ -365,7 +598,7 @@ async def main():
     client.set_disconnection_callback(lambda: print("🔌 Disconnected from server"))
     
     try:
-        # Run with automatic reconnection
+        # Run with automatic reconnection (this handles connection internally)
         await client.run_with_reconnect()
     except KeyboardInterrupt:
         print("\n🛑 Stopping WebSocket client...")
