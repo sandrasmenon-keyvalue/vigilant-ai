@@ -384,7 +384,7 @@ class VitalsWebSocketClient:
             # Create response message
             response_message = {
                 "type": "response_break_data",
-                "data": {
+                "payload": {
                     "userId": user_id,
                     "sessionId": session_id,
                     "breakTimes": prediction_result["break_times"],
@@ -395,7 +395,7 @@ class VitalsWebSocketClient:
             
             # Send response back through WebSocket
             await self.send_message(response_message)
-            logger.info(f"Successfully sent break prediction response for user {user_id}")
+            logger.info(f"DB_ Successfully sent break prediction response {response_message['payload']}")
             
         except Exception as e:
             logger.error(f"Error handling break data request: {e}")
@@ -420,6 +420,7 @@ class VitalsWebSocketClient:
         """Handle request_restaurant_location message type."""
         try:
             # Extract required fields
+            user_id = payload_data.get('userId')
             break_interval_id = payload_data.get('break_interval_id')
             latitude = payload_data.get('latitude')
             longitude = payload_data.get('longitude')
@@ -453,8 +454,9 @@ class VitalsWebSocketClient:
             # Create response message
             response_message = {
                 "type": "return_restaurant_location",
-                "data": {
-                    "break_interval_id": break_interval_id,
+                "payload": {
+                    "userId": user_id,
+                    "id": break_interval_id,
                     "restaurants": restaurant_result["restaurants"],
                     "location": restaurant_result["location"],
                     "count": restaurant_result["count"],
@@ -466,7 +468,7 @@ class VitalsWebSocketClient:
             
             # Send response back through WebSocket
             await self.send_message(response_message)
-            logger.info(f"Successfully sent restaurant location response for break interval {break_interval_id} with {restaurant_result['count']} restaurants")
+            logger.info(f"DB_ Successfully sent restaurant location response for break interval {break_interval_id} with payload {response_message['payload']}")
             
         except Exception as e:
             logger.error(f"Error handling restaurant location request: {e}")

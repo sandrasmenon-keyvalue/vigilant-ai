@@ -76,7 +76,7 @@ class RestaurantFinder:
             
             # Return results immediately
             return {
-                'restaurants': restaurants,
+                'restaurants': restaurants[:5],
                 'location': {
                     'latitude': latitude,
                     'longitude': longitude

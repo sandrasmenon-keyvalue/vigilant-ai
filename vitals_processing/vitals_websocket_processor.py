@@ -248,12 +248,15 @@ class VitalsWebSocketProcessor:
                 else:
                     logger.warning(f"⚠️  Live stream service rejected HV data: {result.get('message')}")
             else:
-                logger.warning(f"⚠️  Failed to send HV data to live stream service: HTTP {response.status_code}")
+                # logger.warning(f"⚠️  Failed to send HV data to live stream service: HTTP {response.status_code}")
+                pass
                 
         except requests.exceptions.RequestException as e:
-            logger.warning(f"⚠️  Could not connect to live stream service for HV data: {e}")
+            # logger.warning(f"⚠️  Could not connect to live stream service for HV data: {e}")
+            pass
         except Exception as e:
-            logger.error(f"Error sending HV data via HTTP API: {e}")
+            # logger.error(f"Error sending HV data via HTTP API: {e}")
+            pass
     
     def _on_connection(self):
         """Handle successful WebSocket connection."""
