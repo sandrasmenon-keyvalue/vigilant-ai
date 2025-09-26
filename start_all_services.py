@@ -77,6 +77,19 @@ def wait_for_service(url: str, service_name: str, timeout: int = 30):
     return False
 
 
+def start_vitals_websocket_processor():
+    """Start the vitals WebSocket processor."""
+    print("🏥 Starting Vitals WebSocket Processor...")
+    try:
+        process = subprocess.Popen([
+            sys.executable, "run_vitals_processor.py"
+        ], cwd=Path(__file__).parent)
+        return process
+    except Exception as e:
+        print(f"❌ Failed to start vitals processor: {e}")
+        return None
+
+
 def main():
     """Main function to start all services."""
     print("🚗 Vigilant AI - Starting All Services")
@@ -110,6 +123,14 @@ def main():
                             # Wait for HTTPS server to start
                             if wait_for_service("https://localhost:8443", "HTTPS Server (with -k flag)"):
                                 
+                                # Start vitals WebSocket processor (optional)
+                                vitals_process = start_vitals_websocket_processor()
+                                if vitals_process:
+                                    processes.append(("Vitals WebSocket Processor", vitals_process))
+                                    print("🏥 Vitals processor started (optional service)")
+                                else:
+                                    print("⚠️  Vitals processor not started (optional service)")
+                                
                                 print("\n🎉 All services started successfully!")
                                 print("\n📡 Service URLs:")
                                 print("   Inference API:     http://localhost:8002")
@@ -127,6 +148,12 @@ def main():
                                 print("\n📋 WebSocket Endpoints:")
                                 print("   Mobile Browser:    /ws/mobile_stream")
                                 print("   Desktop/Local:     /ws/live_stream")
+                                print("   Vitals Backend:    ws://192.168.5.102:4000/ws?token=dev-shared-secret (configurable)")
+                                print("\n🔧 Vitals Configuration:")
+                                print("   Set environment variables for vitals backend:")
+                                print("     VITALS_WEBSOCKET_URI - Backend WebSocket URI")
+                                print("     VITALS_API_KEY       - API key for authentication")
+                                print("     VITALS_AUTH_TOKEN    - Bearer token for authentication")
                             else:
                                 print("❌ HTTPS server failed to start")
                         else:

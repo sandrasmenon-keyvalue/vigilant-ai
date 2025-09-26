@@ -122,7 +122,7 @@ load_dotenv()
 
 api_key = os.getenv('VITALS_API_KEY')
 auth_token = os.getenv('VITALS_AUTH_TOKEN')
-websocket_uri = os.getenv('VITALS_WEBSOCKET_URI', 'ws://localhost:8765')
+websocket_uri = os.getenv('VITALS_WEBSOCKET_URI', 'ws://192.168.5.102:4000/ws?token=dev-shared-secret')
 ```
 
 ## 🛡️ **Security Best Practices**

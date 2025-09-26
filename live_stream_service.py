@@ -39,6 +39,13 @@ from PIL import Image
 import cv2
 import numpy as np
 
+# Import synchronized inference engine
+try:
+    from inference.synchronized_inference_engine import SynchronizedInferenceEngine
+except ImportError as e:
+    logging.error(f"Failed to import synchronized inference engine: {e}")
+    SynchronizedInferenceEngine = None
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -151,6 +158,7 @@ app.add_middleware(
 active_streams: Dict[str, Dict] = {}
 camera_manager = None
 inference_client = None
+sync_inference_engine = None
 
 # Configuration
 FRAME_RATE = 5  # Process every 5th frame for efficiency
@@ -607,6 +615,32 @@ class StreamFrameProcessor:
                 # Log the drowsiness score (handles time-based averaging and file writing)
                 self._log_drowsiness_score(self.avg_drowsiness_score, time.time())
                 
+                # Send DV data to synchronized inference engine
+                if sync_inference_engine is not None:
+                    # Send the drowsiness score with timestamp to sync engine
+                    current_timestamp = time.time()
+                    success = sync_inference_engine.receive_dv_from_inference_api(
+                        drowsiness_score=self.avg_drowsiness_score,
+                        timestamp=current_timestamp,
+                        features={
+                            "avg_score": self.avg_drowsiness_score,
+                            "max_score": self.max_drowsiness_score,
+                            "alert_frames": alert_frames,
+                            "total_frames": total_frames,
+                            "face_confidence": sum(self.face_quality_scores) / len(self.face_quality_scores) if self.face_quality_scores else 0.0,
+                            "batch_size": len(frames),
+                            "stream_id": self.stream_id
+                        },
+                        alert_level=None,  # Will be determined by sync engine
+                        confidence=sum(self.face_quality_scores) / len(self.face_quality_scores) if self.face_quality_scores else 0.0,
+                        frame_id=f"{self.stream_id}_batch_{self.frame_count}"
+                    )
+                    
+                    if success:
+                        logger.info(f"📡 DV data sent to sync engine: score={self.avg_drowsiness_score:.4f}, timestamp={current_timestamp:.3f}")
+                    else:
+                        logger.warning(f"⚠️  Failed to send DV data to sync engine")
+                
                 # Determine alert level from average score
                 if self.avg_drowsiness_score >= 0.7:
                     alert_level = "critical"
@@ -740,33 +774,74 @@ class StreamFrameProcessor:
 @app.on_event("startup")
 async def startup_event():
     """Initialize AI components on startup."""
-    global camera_manager, inference_client
+    global camera_manager, inference_client, sync_inference_engine
     
     logger.info("🚀 Starting Vigilant AI Live Stream Service")
     
     try:
-        # Initialize inference API client
-        logger.info("Connecting to Inference API...")
+        # Initialize camera manager first (always works)
+        camera_manager = CameraManager()
+        logger.info("✅ Camera manager initialized")
+        
+        # Initialize synchronized inference engine
+        if SynchronizedInferenceEngine is not None:
+            sync_inference_engine = SynchronizedInferenceEngine(
+                sync_tolerance=0.1,  # 100ms tolerance for synchronization
+                max_buffer_size=1000,
+                sync_timeout=2.0,    # 2 second timeout for missing data
+                enable_logging=True
+            )
+            logger.info("✅ Synchronized Inference Engine initialized")
+        else:
+            logger.warning("⚠️  Synchronized Inference Engine not available")
+        
+        # Initialize inference API client (non-blocking)
+        logger.info("Initializing Inference API client...")
         inference_client = InferenceAPIClient(INFERENCE_API_URL)
         
-        # Test connection to inference API
-        if await inference_client.initialize():
-            logger.info("✅ Connected to Inference API successfully")
-        else:
-            logger.warning("⚠️  Could not connect to Inference API - check if inference service is running")
-        
-        # Initialize camera manager
-        camera_manager = CameraManager()
-        
-        logger.info("✅ All components initialized successfully")
+        # Start background task to connect to inference API
+        asyncio.create_task(connect_to_inference_api())
         
         # Start cleanup task
         asyncio.create_task(cleanup_streams())
         
+        logger.info("✅ Live Stream Service startup completed")
+        
     except Exception as e:
         logger.error(f"❌ Failed to initialize components: {e}")
         logger.error(traceback.format_exc())
-        raise
+        # Don't raise - allow service to start even if some components fail
+        
+        # Initialize minimal components
+        if camera_manager is None:
+            camera_manager = CameraManager()
+
+
+async def connect_to_inference_api():
+    """Background task to connect to inference API with retries."""
+    global inference_client
+    
+    max_retries = 5
+    retry_delay = 2
+    
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"Attempting to connect to Inference API (attempt {attempt + 1}/{max_retries})...")
+            
+            if await inference_client.initialize():
+                logger.info("✅ Connected to Inference API successfully")
+                return
+            else:
+                logger.warning(f"⚠️  Could not connect to Inference API - attempt {attempt + 1} failed")
+                
+        except Exception as e:
+            logger.error(f"❌ Inference API connection attempt {attempt + 1} failed: {e}")
+        
+        if attempt < max_retries - 1:
+            await asyncio.sleep(retry_delay)
+            retry_delay *= 2  # Exponential backoff
+    
+    logger.warning("⚠️  Could not connect to Inference API after all attempts - service will run with limited functionality")
 
 
 @app.on_event("shutdown")
@@ -816,88 +891,6 @@ async def stop_stream(stream_id: str):
         logger.info(f"🛑 Stream {stream_id} stopped and cleaned up")
 
 
-@app.websocket("/ws/live_stream")
-async def websocket_live_stream(websocket: WebSocket):
-    """WebSocket endpoint for live video stream processing."""
-    await websocket.accept()
-    stream_id = str(uuid.uuid4())
-    
-    logger.info(f"🔗 New WebSocket connection: {stream_id}")
-    
-    try:
-        # Wait for stream configuration
-        config_data = await websocket.receive_text()
-        config = StreamConfig.parse_raw(config_data)
-        stream_id = config.stream_id
-        
-        # Initialize camera
-        if not camera_manager.initialize_camera(
-            stream_id, config.camera_source, config.frame_width, config.frame_height
-        ):
-            await websocket.send_text(json.dumps({
-                "error": "Failed to initialize camera"
-            }))
-            return
-        
-        # Add to active streams
-        active_streams[stream_id] = {
-            'start_time': datetime.now().isoformat(),
-            'last_activity': time.time(),
-            'websocket': websocket,
-            'config': config,
-            'status': 'active'
-        }
-        
-        # Send confirmation
-        await websocket.send_text(json.dumps({
-            "status": "stream_started",
-            "stream_id": stream_id,
-            "message": "Live stream processing started"
-        }))
-        
-        # Main processing loop
-        frame_processor = camera_manager.frame_processors[stream_id]
-        
-        while True:
-            # Get frame from camera
-            frame = camera_manager.get_frame(stream_id)
-            
-            if frame is not None:
-                # Process frame
-                alert = frame_processor.process_frame(frame)
-                
-                # Send alert if generated
-                if alert is not None:
-                    await websocket.send_text(alert.json())
-                
-                # Update last activity
-                active_streams[stream_id]['last_activity'] = time.time()
-                
-                # Optional: Send frame for display (base64 encoded)
-                if config.enable_display and frame_processor.frame_count % 15 == 0:  # Every 3 seconds
-                    _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 50])
-                    frame_b64 = base64.b64encode(buffer).decode('utf-8')
-                    
-                    await websocket.send_text(json.dumps({
-                        "type": "frame",
-                        "frame_data": frame_b64,
-                        "stream_id": stream_id
-                    }))
-            
-            # Small delay to prevent overwhelming
-            await asyncio.sleep(0.1)
-    
-    except WebSocketDisconnect:
-        logger.info(f"🔌 WebSocket disconnected: {stream_id}")
-    except Exception as e:
-        logger.error(f"❌ WebSocket error for stream {stream_id}: {e}")
-        await websocket.send_text(json.dumps({
-            "error": f"Stream error: {str(e)}"
-        }))
-    
-    finally:
-        # Cleanup
-        await stop_stream(stream_id)
 
 
 @app.websocket("/ws/mobile_stream")
@@ -1195,7 +1188,8 @@ async def health_check():
         "components": {
             "camera_manager": camera_manager is not None,
             "inference_client": inference_client is not None,
-            "inference_api_connected": inference_api_healthy
+            "inference_api_connected": inference_api_healthy,
+            "sync_inference_engine": sync_inference_engine is not None
         },
         "active_streams": len(active_streams),
         "inference_api_url": INFERENCE_API_URL,
@@ -1270,6 +1264,81 @@ async def get_all_logs():
     }
 
 
+@app.post("/sync_engine/receive_hv_data")
+async def receive_hv_data_endpoint(hv_data: dict, timestamp: float, source: str = "vitals_api"):
+    """
+    Receive HV data from external sources (like vitals processor) and send to sync engine.
+    
+    Args:
+        hv_data: Vitals data dictionary
+        timestamp: Timestamp when data was collected
+        source: Source of the data
+    """
+    if sync_inference_engine is None:
+        raise HTTPException(status_code=503, detail="Synchronized Inference Engine not available")
+    
+    try:
+        success = sync_inference_engine.receive_hv_data(hv_data, timestamp, source)
+        return {
+            "success": success,
+            "message": "HV data received" if success else "Failed to process HV data",
+            "timestamp": timestamp,
+            "source": source
+        }
+    except Exception as e:
+        logger.error(f"Error receiving HV data via API: {e}")
+        raise HTTPException(status_code=500, detail=f"Error processing HV data: {e}")
+
+
+@app.get("/sync_engine_status")
+async def get_sync_engine_status():
+    """Get status of the synchronized inference engine."""
+    if sync_inference_engine is None:
+        return {
+            "status": "not_available",
+            "message": "Synchronized Inference Engine not initialized"
+        }
+    
+    try:
+        # Get buffer status and statistics
+        buffer_status = sync_inference_engine.get_buffer_status()
+        
+        # Get latest result
+        latest_result = sync_inference_engine.get_latest_result()
+        
+        # Get health score trends
+        trends = sync_inference_engine.get_health_score_trends()
+        
+        # Get rule check status
+        rule_status = sync_inference_engine.get_rule_check_status()
+        
+        return {
+            "status": "active",
+            "buffer_status": buffer_status,
+            "latest_result": {
+                "timestamp": latest_result.timestamp if latest_result else None,
+                "dv_score": latest_result.dv_score if latest_result else None,
+                "hv_score": latest_result.hv_score if latest_result else None,
+                "health_score": latest_result.health_score if latest_result else None,
+                "mode": latest_result.mode if latest_result else None
+            } if latest_result else None,
+            "trends": trends,
+            "rule_checks": rule_status,
+            "sync_config": {
+                "sync_tolerance": sync_inference_engine.sync_tolerance,
+                "max_buffer_size": sync_inference_engine.max_buffer_size,
+                "sync_timeout": sync_inference_engine.sync_timeout
+            }
+        }
+    
+    except Exception as e:
+        logger.error(f"Error getting sync engine status: {e}")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+
 @app.get("/")
 async def root():
     """Root endpoint with service information."""
@@ -1279,13 +1348,13 @@ async def root():
         "status": "running",
         "description": "Real-time drowsiness detection from live camera streams",
         "endpoints": {
-            "websocket": "/ws/live_stream",
             "mobile_websocket": "/ws/mobile_stream",
             "start_stream": "/start_camera_stream",
             "stream_status": "/stream_status/{stream_id}",
             "latest_alert": "/latest_alert/{stream_id}",
             "stop_stream": "/stop_stream/{stream_id}",
             "active_streams": "/active_streams",
+            "sync_engine_status": "/sync_engine_status",
             "health": "/health",
             "docs": "/docs"
         }
@@ -1333,30 +1402,16 @@ def create_self_signed_cert():
 
 
 if __name__ == "__main__":
-    # Create SSL certificates for HTTPS/WSS support
-    cert_file, key_file = create_self_signed_cert()
+    print("🚀 Starting Live Stream Service on port 8001...")
+    print("📡 WebSocket will be available via HTTPS")
     
-    if cert_file and key_file:
-        print("🔒 Starting Live Stream Service with HTTPS/WSS support...")
-        print("📡 WebSocket will be available via WSS (secure)")
-        
-        # Run the server with SSL
-        uvicorn.run(
-            "live_stream_service:app",
-            host="0.0.0.0",
-            port=8001,
-            ssl_keyfile=key_file,
-            ssl_certfile=cert_file,
-            reload=True,
-            log_level="info"
-        )
-    else:
-        print("⚠️ Running without SSL - WSS connections will fail!")
-        # Fallback to HTTP (for debugging only)
-        uvicorn.run(
-            "live_stream_service:app",
-            host="0.0.0.0",
-            port=8001,
-            reload=True,
-            log_level="info"
-        )
+    # Run the server with SSL
+    uvicorn.run(
+        "live_stream_service:app",
+        host="0.0.0.0",
+        port=8001,
+        reload=False,
+        log_level="info",
+        ssl_keyfile="server.key",
+        ssl_certfile="server.crt"
+    )

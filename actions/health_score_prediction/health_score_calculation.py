@@ -21,7 +21,9 @@ def calculate_health_score(dv: float, hv: float) -> float:
         return hv
     
     # Normal case: combine DV and HV
-    return 0.6 * dv + 0.4 * hv
+    hs =  0.6 * dv + 0.4 * hv
+    print(f"Health Score: {hs:.3f}")
+    return hs
 
 
 def main():

@@ -28,6 +28,13 @@ import uvicorn
 sys.path.append(os.path.join(os.path.dirname(__file__), 'ai_module'))
 sys.path.append(os.path.join(os.path.dirname(__file__), 'ai_module', 'vision_model'))
 
+# Import synchronized inference engine
+try:
+    from inference.synchronized_inference_engine import SynchronizedInferenceEngine
+except ImportError as e:
+    logging.error(f"Failed to import synchronized inference engine: {e}")
+    SynchronizedInferenceEngine = None
+
 # Import AI modules
 try:
     from face_detection import FaceLandmarkDetector  # Keep for compatibility
@@ -70,6 +77,7 @@ feature_extractor: Optional[DrowsinessFeatureExtractor] = None
 window_processor: Optional[SlidingWindowProcessor] = None
 drowsiness_model = None
 feature_scaler = None
+sync_inference_engine = None
 
 
 # Pydantic models
@@ -118,7 +126,7 @@ class BatchInferenceRequest(BaseModel):
 @app.on_event("startup")
 async def startup_event():
     """Initialize AI components on startup."""
-    global face_detector, feature_extractor, window_processor, drowsiness_model, feature_scaler
+    global face_detector, feature_extractor, window_processor, drowsiness_model, feature_scaler, sync_inference_engine
     
     logger.info("🚀 Starting Vigilant AI Inference Service")
     
@@ -174,6 +182,18 @@ async def startup_event():
             logger.warning(f"⚠️  Model files not found: {model_path} or {scaler_path}")
             drowsiness_model = None
             feature_scaler = None
+        
+        # Initialize synchronized inference engine (optional)
+        if SynchronizedInferenceEngine is not None:
+            sync_inference_engine = SynchronizedInferenceEngine(
+                sync_tolerance=0.1,  # 100ms tolerance for synchronization
+                max_buffer_size=1000,
+                sync_timeout=2.0,    # 2 second timeout for missing data
+                enable_logging=True
+            )
+            logger.info("✅ Synchronized Inference Engine initialized in Inference API")
+        else:
+            logger.warning("⚠️  Synchronized Inference Engine not available in Inference API")
         
         logger.info("✅ All AI components initialized successfully")
         
@@ -383,6 +403,27 @@ def process_frame_inference(image: np.ndarray, timestamp: float = None) -> Infer
             logger.info(f"📊 Final result - Score: {drowsiness_score:.4f}, Alert: {alert_level}, Confidence: {confidence:.4f}")
             logger.info(f"⏱️  Total inference time: {total_inference_time:.3f}s")
             logger.info(f"   ⏱️  Breakdown - Face: {face_detection_time:.3f}s, Features: {feature_extraction_time:.3f}s, Prediction: {prediction_time:.3f}s" if 'prediction_time' in locals() else f"   ⏱️  Breakdown - Face: {face_detection_time:.3f}s, Features: {feature_extraction_time:.3f}s, Prediction: N/A")
+            
+            # Send DV data to synchronized inference engine if available
+            if sync_inference_engine is not None:
+                print("***************** DV DATA RECEIVED *****************", drowsiness_score)
+                try:
+                    success = sync_inference_engine.receive_dv_from_inference_api(
+                        drowsiness_score=drowsiness_score,
+                        timestamp=timestamp,
+                        features=features,
+                        alert_level=alert_level,
+                        confidence=confidence,
+                        frame_id=f"inference_api_frame_{timestamp:.3f}"
+                    )
+                    
+                    if success:
+                        logger.info(f"📡 DV data sent to sync engine from inference API: score={drowsiness_score:.4f}")
+                    else:
+                        logger.warning(f"⚠️  Failed to send DV data to sync engine from inference API")
+                        
+                except Exception as e:
+                    logger.error(f"❌ Error sending DV data to sync engine: {e}")
         
         return InferenceResult(
             timestamp=timestamp,
@@ -684,7 +725,8 @@ async def health_check():
             "face_detector": face_detector is not None,
             "feature_extractor": feature_extractor is not None,
             "window_processor": window_processor is not None,
-            "drowsiness_model": drowsiness_model is not None
+            "drowsiness_model": drowsiness_model is not None,
+            "sync_inference_engine": sync_inference_engine is not None
         },
         "model_info": {
             "model_loaded": drowsiness_model is not None,
@@ -693,6 +735,56 @@ async def health_check():
         },
         "timestamp": datetime.now().isoformat()
     }
+
+
+@app.get("/inference/sync_engine_status")
+async def get_inference_sync_engine_status():
+    """Get status of the synchronized inference engine in inference API."""
+    if sync_inference_engine is None:
+        return {
+            "status": "not_available",
+            "message": "Synchronized Inference Engine not initialized in Inference API"
+        }
+    
+    try:
+        # Get buffer status and statistics
+        buffer_status = sync_inference_engine.get_buffer_status()
+        
+        # Get latest result
+        latest_result = sync_inference_engine.get_latest_result()
+        
+        # Get health score trends
+        trends = sync_inference_engine.get_health_score_trends()
+        
+        # Get rule check status
+        rule_status = sync_inference_engine.get_rule_check_status()
+        
+        return {
+            "status": "active",
+            "service": "inference_api",
+            "buffer_status": buffer_status,
+            "latest_result": {
+                "timestamp": latest_result.timestamp if latest_result else None,
+                "dv_score": latest_result.dv_score if latest_result else None,
+                "hv_score": latest_result.hv_score if latest_result else None,
+                "health_score": latest_result.health_score if latest_result else None,
+                "mode": latest_result.mode if latest_result else None
+            } if latest_result else None,
+            "trends": trends,
+            "rule_checks": rule_status,
+            "sync_config": {
+                "sync_tolerance": sync_inference_engine.sync_tolerance,
+                "max_buffer_size": sync_inference_engine.max_buffer_size,
+                "sync_timeout": sync_inference_engine.sync_timeout
+            }
+        }
+    
+    except Exception as e:
+        logger.error(f"Error getting sync engine status in inference API: {e}")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
 
 
 @app.get("/")
@@ -707,6 +799,7 @@ async def root():
             "video_stream": "/inference/video_stream", 
             "upload_video": "/inference/upload_video",
             "batch": "/inference/batch",
+            "sync_engine_status": "/inference/sync_engine_status",
             "health": "/inference/health",
             "docs": "/docs"
         },

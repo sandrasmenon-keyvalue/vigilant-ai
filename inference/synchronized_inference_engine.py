@@ -147,6 +147,7 @@ class SynchronizedInferenceEngine:
             True if data was received successfully, False otherwise
         """
         try:
+            print("***************** DV DATA RECEIVED *****************", dv_data)
             with self.lock:
                 # TODO: DV data (dv,tk) gets stored in buffer for synchronization
                 data_point = DataPoint(
@@ -165,6 +166,7 @@ class SynchronizedInferenceEngine:
                 
                 if self.enable_logging:
                     logger.info(f"📸 Received DV data at timestamp {timestamp:.3f}, waiting {self.sync_timeout}s for HV data")
+                    logger.info(f"   DV Buffer size: {len(self.dv_buffer)}, HV Buffer size: {len(self.hv_buffer)}")
                 
                 # Try to synchronize with HV data
                 self._try_synchronize()
@@ -244,6 +246,7 @@ class SynchronizedInferenceEngine:
                 
                 if self.enable_logging:
                     logger.info(f"📊 Received HV data at timestamp {timestamp:.3f}, waiting {self.sync_timeout}s for DV data")
+                    logger.info(f"   DV Buffer size: {len(self.dv_buffer)}, HV Buffer size: {len(self.hv_buffer)}")
                 
                 # Try to synchronize with DV data
                 self._try_synchronize()
