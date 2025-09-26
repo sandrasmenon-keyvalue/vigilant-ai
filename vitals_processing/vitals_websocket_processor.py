@@ -8,6 +8,7 @@ import logging
 import time
 import sys
 import os
+import requests
 from typing import Dict, Any, Optional, Callable
 
 # Add parent directory to path for imports
@@ -26,14 +27,16 @@ class VitalsWebSocketProcessor:
     """
     
     def __init__(self, 
-                 websocket_uri: str = "ws://localhost:8765",
+                 websocket_uri: str = "ws://192.168.5.102:4000/ws?token=dev-shared-secret",
                  api_key: Optional[str] = None,
                  auth_token: Optional[str] = None,
                  headers: Optional[Dict[str, str]] = None,
                  age: int = 35,
                  health_conditions: Optional[Dict[str, int]] = None,
                  model_path: str = "trained_models/vital-training/vitals_hv_model_xgboost.pkl",
-                 scaler_path: str = "trained_models/vital-training/vitals_feature_scaler_xgboost.pkl"):
+                 scaler_path: str = "trained_models/vital-training/vitals_feature_scaler_xgboost.pkl",
+                 sync_inference_engine = None,
+                 live_stream_service_url: str = "https://localhost:8001"):
         """
         Initialize the integrated vitals processor.
         
@@ -46,9 +49,13 @@ class VitalsWebSocketProcessor:
             health_conditions: Health conditions dict
             model_path: Path to trained vitals model
             scaler_path: Path to feature scaler
+            sync_inference_engine: Optional synchronized inference engine for HV data integration
+            live_stream_service_url: URL of live stream service for HV data forwarding
         """
         self.age = age
         self.health_conditions = health_conditions or {}
+        self.sync_inference_engine = sync_inference_engine
+        self.live_stream_service_url = live_stream_service_url
         
         # Initialize vitals processor
         self.vitals_processor = VitalsProcessor(model_path, scaler_path)
@@ -165,11 +172,88 @@ class VitalsWebSocketProcessor:
                 except Exception as e:
                     logger.error(f"Error in HV prediction callback: {e}")
             
+            # Send HV data to synchronized inference engine
+            self._send_hv_data_to_sync_engine(hv_result, vitals_data)
+            
             # Log prediction
             logger.info(f"HV Prediction: {hv_result['hv_score']:.3f} ({hv_result['risk_level']} risk)")
             
         except Exception as e:
             logger.error(f"Error processing vitals for HV prediction: {e}")
+    
+    def _send_hv_data_to_sync_engine(self, hv_result: Dict[str, Any], vitals_data: Dict[str, Any]):
+        """
+        Send HV data to synchronized inference engine via HTTP API or direct connection.
+        
+        Args:
+            hv_result: HV prediction result
+            vitals_data: Original vitals data
+        """
+        # Extract timestamp from vitals data (convert from ms to seconds if needed)
+        timestamp = vitals_data.get('timestamp', time.time())
+        if timestamp > 1e12:  # If timestamp is in milliseconds
+            timestamp = timestamp / 1000.0
+        
+        # Prepare HV data payload
+        hv_data = {
+            'hv_score': hv_result['hv_score'],
+            'hr': vitals_data.get('hr'),
+            'spo2': vitals_data.get('spo2'),
+            'hr_median': vitals_data.get('hr'),  # For compatibility
+            'spo2_median': vitals_data.get('spo2'),  # For compatibility
+            'temperature': vitals_data.get('temperature'),
+            'co2_level': vitals_data.get('co2_level'),
+            'risk_level': hv_result['risk_level'],
+            'interpretation': hv_result['interpretation'],
+            'environmental_conditions': hv_result.get('environmental_conditions'),
+            'source': 'vitals_websocket'
+        }
+        
+        # Try direct connection first (if available)
+        if self.sync_inference_engine is not None:
+            try:
+                success = self.sync_inference_engine.receive_hv_data(
+                    hv_data=hv_data,
+                    timestamp=timestamp,
+                    source="vitals_websocket"
+                )
+                
+                if success:
+                    logger.info(f"📡 HV data sent to local sync engine: score={hv_result['hv_score']:.3f}, timestamp={timestamp:.3f}")
+                    return
+                else:
+                    logger.warning(f"⚠️  Failed to send HV data to local sync engine")
+                    
+            except Exception as e:
+                logger.error(f"Error sending HV data to local sync engine: {e}")
+        
+        # Fallback to HTTP API call to live stream service
+        try:
+            url = f"{self.live_stream_service_url}/sync_engine/receive_hv_data"
+            payload = {
+                "hv_data": hv_data,
+                "timestamp": timestamp,
+                "source": "vitals_websocket_api"
+            }
+            
+            # Disable SSL verification for self-signed certificates
+            verify_ssl = not self.live_stream_service_url.startswith('https')
+            
+            response = requests.post(url, json=payload, timeout=5, verify=verify_ssl)
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('success'):
+                    logger.info(f"📡 HV data sent to live stream service: score={hv_result['hv_score']:.3f}, timestamp={timestamp:.3f}")
+                else:
+                    logger.warning(f"⚠️  Live stream service rejected HV data: {result.get('message')}")
+            else:
+                logger.warning(f"⚠️  Failed to send HV data to live stream service: HTTP {response.status_code}")
+                
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"⚠️  Could not connect to live stream service for HV data: {e}")
+        except Exception as e:
+            logger.error(f"Error sending HV data via HTTP API: {e}")
     
     def _on_connection(self):
         """Handle successful WebSocket connection."""
@@ -328,7 +412,7 @@ async def main():
     
     # Create processor
     processor = VitalsWebSocketProcessor(
-        websocket_uri="ws://localhost:8765",
+        websocket_uri="ws://192.168.5.102:4000/ws?token=dev-shared-secret",
         age=45,
         health_conditions=health_conditions
     )

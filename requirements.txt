@@ -1,17 +1,17 @@
 # Core dependencies for drowsiness detection
-opencv-python==4.8.1.78
-mediapipe==0.10.7
-numpy==1.24.3
-pandas==2.0.3
-scikit-learn==1.3.0
-xgboost==1.7.6
-matplotlib==3.7.2
-seaborn==0.12.2
+opencv-python>=4.8.0
+mediapipe>=0.10.13
+numpy<2.0.0
+pandas>=2.0.0
+scikit-learn>=1.3.0
+xgboost>=1.7.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
 
 # Optional: For advanced CNN approach
-torch==2.0.1
-torchvision==0.15.2
-Pillow==10.0.0
+torch>=2.0.0
+torchvision>=0.15.0
+Pillow>=10.0.0
 
 # LLM and AI integration
 langchain==0.3.27
@@ -35,3 +35,6 @@ tqdm==4.65.0
 # Additional for inference API
 uvicorn[standard]==0.24.0
 aiohttp==3.9.0
+
+# Additional for unified websocket service
+requests==2.31.0

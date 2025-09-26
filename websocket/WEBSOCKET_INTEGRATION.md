@@ -65,7 +65,7 @@ from vitals_websocket_processor import VitalsWebSocketProcessor
 
 # Create processor
 processor = VitalsWebSocketProcessor(
-    websocket_uri="ws://localhost:8765",
+    websocket_uri="ws://192.168.5.102:4000/ws?token=dev-shared-secret",
     age=35,
     health_conditions={'hypertension': 1}
 )
@@ -90,7 +90,7 @@ def my_connection_handler(is_connected):
 
 ## Configuration
 
-- **WebSocket URI**: Default `ws://localhost:8765`
+- **WebSocket URI**: Default `ws://192.168.5.102:4000/ws?token=dev-shared-secret`
 - **Patient Age**: Default 35 years
 - **Health Conditions**: Configurable dictionary with conditions
 - **Environmental Thresholds**: Configurable temperature and CO2 level thresholds

@@ -21,7 +21,7 @@ class VitalsWebSocketClient:
     """
     
     def __init__(self, 
-                 uri: str = "ws://localhost:8765",
+                 uri: str = "ws://192.168.5.102:4000/ws?token=dev-shared-secret",
                  api_key: Optional[str] = None,
                  auth_token: Optional[str] = None,
                  headers: Optional[Dict[str, str]] = None,
@@ -338,7 +338,7 @@ async def main():
     # Option 1: Use environment variables
     # export VITALS_API_KEY="your-api-key-here"
     # export VITALS_AUTH_TOKEN="your-bearer-token-here"
-    client = VitalsWebSocketClient(uri="ws://localhost:8765")
+    client = VitalsWebSocketClient(uri="ws://192.168.5.102:4000/ws?token=dev-shared-secret")
     
     # Option 2: Set credentials directly
     # client = VitalsWebSocketClient(

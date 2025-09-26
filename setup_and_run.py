@@ -24,7 +24,7 @@ def run_command(command, description, check=True):
     except subprocess.CalledProcessError as e:
         print(f"❌ {description} failed:")
         print(f"   Error: {e.stderr}")
-        return False
+
 
 def check_python_version():
     """Check if Python version is compatible."""
