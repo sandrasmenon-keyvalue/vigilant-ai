@@ -4,6 +4,7 @@ Receives DV (vision data) and HV (vitals data) with timestamps, synchronizes the
 and passes synchronized data to health score calculation and other checks.
 """
 
+import json
 import time
 import threading
 import queue
@@ -17,6 +18,10 @@ from actions.health_score_prediction.health_score_calculation import calculate_h
 
 # Import alert prediction
 from actions.alert_prediction.alert_prediction import create_alert, Alert
+
+# Import simple WebSocket sender for sending health scores and alerts
+from websocket.simple_websocket_sender import send_health_score_simple, send_alert_simple
+from websocket.websocket_client import VitalsWebSocketClient
 
 logger = logging.getLogger(__name__)
 
@@ -414,6 +419,31 @@ class SynchronizedInferenceEngine:
             # Calculate health score using the existing function
             health_score = calculate_health_score(dv_score, hv_score)
             
+            # Send health score via WebSocket
+            try:
+                socket = VitalsWebSocketClient()
+                message = json.dumps({
+                    "payload": {
+                        "score": health_score,
+                        "reasons": []
+                    }
+                })
+                socket.send_message(message)
+                # success = send_health_score_simple(
+                #     health_score=int(health_score),
+                #     dv_score=dv_score,
+                #     hv_score=hv_score,
+                #     mode="synchronized",
+                #     sync_tolerance=time_diff,
+                #     source="synchronized_inference_engine"
+                # )
+                # if success and self.enable_logging:
+                #     logger.info(f"📤 Health score queued for WebSocket: {health_score:.3f}")
+                # elif not success:
+                #     logger.warning(f"⚠️  Failed to queue health score: {health_score:.3f}")
+            except Exception as e:
+                logger.error(f"❌ Error queuing health score for WebSocket: {e}")
+            
             processing_time = time.time() - start_time
             
             result = SynchronizedResult(
@@ -673,7 +703,7 @@ class SynchronizedInferenceEngine:
     
     def _trigger_alert(self, alert_type: str, reason: str):
         """
-        Trigger alert using alert_prediction module.
+        Trigger alert using alert_prediction module and send via WebSocket.
         
         Args:
             alert_type: Type of alert (dv_high, hv_low, hr_violations, spo2_violations)
@@ -684,9 +714,46 @@ class SynchronizedInferenceEngine:
         # Create alert using alert_prediction module
         alert = create_alert(reason)
         
+        # Determine alert level based on alert type
+        alert_level = "warning"
+        if "critical" in alert_type.lower() or "violations" in alert_type:
+            alert_level = "critical"
+        elif "environmental" in alert_type and "critical" in alert_type:
+            alert_level = "critical"
+        elif "dangerous" in alert_type:
+            alert_level = "critical"
+        
+        # Send alert via WebSocket
+        try:
+            # success = send_alert_simple(
+            #     alert_type=alert_type,
+            #     reason=reason,
+            #     alert_level=alert_level,
+            #     source="synchronized_inference_engine",
+            #     timestamp=time.time()
+            # )
+            # if success and self.enable_logging:
+            #     logger.info(f"📤 Alert queued for WebSocket: {alert_type}")
+            # elif not success:
+            #     logger.warning(f"⚠️  Failed to queue alert: {alert_type}")
+
+            socket = VitalsWebSocketClient()
+            message = json.dumps({
+                "type": "speech_alert",
+                "userId": "user123",
+                "payload": {
+                    "text": reason,
+                    "description":""
+                }
+            })
+            socket.send_message(message)
+        except Exception as e:
+            logger.error(f"❌ Error queuing alert for WebSocket: {e}")
+        
         if self.enable_logging:
             logger.warning(f"🚨 ALERT [{alert_type}]: {alert.reason}")
             logger.warning(f"   Alert Type: {alert.type}")
+            logger.warning(f"   Alert Level: {alert_level}")
         
         # Call alert callback if provided (pass the Alert object)
         if self.alert_callback:
@@ -820,6 +887,19 @@ def health_score_callback(result: SynchronizedResult) -> None:
         print("   🚨 Poor Health - Alert!")
 
 
+def alert_callback(alert: Alert, alert_type: str) -> None:
+    """
+    Example callback function for alerts.
+    
+    Args:
+        alert: Alert object from alert_prediction module
+        alert_type: Type of alert (dv_high, hv_low, etc.)
+    """
+    print(f"🚨 Alert Callback: {alert_type}")
+    print(f"   Type: {alert.type}")
+    print(f"   Reason: {alert.reason}")
+
+
 def main():
     """Demo the synchronized inference engine."""
     print("Synchronized Inference Engine Demo")
@@ -830,29 +910,30 @@ def main():
         sync_tolerance=0.1,
         max_buffer_size=100,
         health_score_callback=health_score_callback,
+        alert_callback=alert_callback,
         enable_logging=True
     )
     
     # Simulate receiving data
     print("\n🔄 Simulating data reception...")
     
-    # Data points with timestamps
+    # Data points with timestamps (including some that will trigger alerts)
     data_points = [
-        # Timestamp 1: Both DV and HV
+        # Timestamp 1: Both DV and HV (normal)
         {'timestamp': 1703123456.000, 'dv': 0.3, 'hv': 0.7},
         
-        # Timestamp 2: Only DV
-        {'timestamp': 1703123457.000, 'dv': 0.4, 'hv': None},
+        # Timestamp 2: High DV score (should trigger DV alert)
+        {'timestamp': 1703123457.000, 'dv': 0.8, 'hv': None},
         
-        # Timestamp 3: Only HV
-        {'timestamp': 1703123458.000, 'dv': None, 'hv': 0.6},
+        # Timestamp 3: Low HV score (should trigger HV alert)
+        {'timestamp': 1703123458.000, 'dv': None, 'hv': 0.2},
         
         # Timestamp 4: Both DV and HV (slightly different times)
         {'timestamp': 1703123459.000, 'dv': 0.2, 'hv': 0.8},
         {'timestamp': 1703123459.050, 'dv': None, 'hv': 0.8},  # 50ms later
         
-        # Timestamp 5: Both DV and HV
-        {'timestamp': 1703123460.000, 'dv': 0.5, 'hv': 0.5},
+        # Timestamp 5: Both high DV and low HV (should trigger both alerts)
+        {'timestamp': 1703123460.000, 'dv': 0.7, 'hv': 0.1},
     ]
     
     # Send data
