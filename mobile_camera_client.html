@@ -646,7 +646,7 @@
             if (isStreaming) return;
             
             isStreaming = true;
-            const frameRate = 2; // Reduced to 2 FPS to minimize processing load
+            const frameRate = 5; // Reduced to 2 FPS to minimize processing load
             const interval = 1000 / frameRate; // Convert to milliseconds = 500ms
             
             log(`Starting frame streaming at ${frameRate} FPS (reduced processing load)`);

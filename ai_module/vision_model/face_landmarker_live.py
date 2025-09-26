@@ -53,6 +53,13 @@ class LiveFaceLandmarkerDetector:
         self.model_path = model_path
         self.result_callback = result_callback or self._default_callback
         
+        # Store configuration parameters as instance attributes
+        self.num_faces = num_faces
+        self.min_face_detection_confidence = min_face_detection_confidence
+        self.min_face_presence_confidence = min_face_presence_confidence
+        self.min_tracking_confidence = min_tracking_confidence
+        self.output_blendshapes = output_blendshapes
+        
         # Initialize detector with live stream configuration
         base_options = self.mp_tasks.BaseOptions(model_asset_path=model_path)
         
@@ -217,7 +224,8 @@ class LiveFaceLandmarkerDetector:
             'face_outline': [landmarks[i] for i in self.landmark_indices['face_outline']],
             'image_shape': (image_height, image_width),
             'timestamp': result_data['timestamp'],
-            'frame_id': result_data['frame_id']
+            'frame_id': result_data['frame_id'],
+            'face_detected': True  # CRITICAL: Set face_detected flag for training pipeline
         }
         
         # Add blendshape scores if available
@@ -256,7 +264,11 @@ class LiveFaceLandmarkerDetector:
             options = self.mp_vision.FaceLandmarkerOptions(
                 base_options=base_options,
                 running_mode=self.mp_vision.RunningMode.IMAGE,  # IMAGE mode for sync
-                output_face_blendshapes=True,
+                num_faces=self.num_faces,
+                min_face_detection_confidence=self.min_face_detection_confidence,
+                min_face_presence_confidence=self.min_face_presence_confidence,
+                min_tracking_confidence=self.min_tracking_confidence,
+                output_face_blendshapes=self.output_blendshapes,
                 output_facial_transformation_matrixes=True
             )
             
@@ -305,6 +317,8 @@ class LiveFaceLandmarkerDetector:
                 
         except Exception as e:
             logger.error(f"Error in sync detection: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return None
     
     def close(self):

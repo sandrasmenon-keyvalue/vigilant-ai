@@ -1,6 +1,6 @@
 # WebSocket Event Sender
 
-Simple and reliable WebSocket client for sending events to your WebSocket server at `ws://192.168.5.102:4000/ws?token=dev-shared-secret`.
+Simple and reliable WebSocket client for sending events to your WebSocket server at `ws://192.168.5.93:4000/ws?token=dev-shared-secret`.
 
 ## Features
 
@@ -103,7 +103,7 @@ Send any event (async version).
 
 ### Classes
 
-#### `WebSocketEventSender(uri="ws://192.168.5.102:4000/ws?token=dev-shared-secret")`
+#### `WebSocketEventSender(uri="ws://192.168.5.93:4000/ws?token=dev-shared-secret")`
 Main WebSocket client class.
 
 **Methods:**
@@ -118,7 +118,7 @@ The WebSocket URI is configured in `websocket/event_sender.py`:
 
 ```python
 # Default URI
-uri = "ws://192.168.5.102:4000/ws?token=dev-shared-secret"
+uri = "ws://192.168.5.93:4000/ws?token=dev-shared-secret"
 
 # Custom URI
 sender = WebSocketEventSender("ws://your-server:port/ws?token=your-token")
@@ -143,7 +143,7 @@ python test_health_score_websocket_integration.py
 ### Health scores not being sent?
 
 1. **Check logs** for `📤 Health score sent via WebSocket` messages
-2. **Verify WebSocket server** is running at `ws://192.168.5.102:4000/ws?token=dev-shared-secret`
+2. **Verify WebSocket server** is running at `ws://192.168.5.93:4000/ws?token=dev-shared-secret`
 3. **Check network connectivity** between client and server
 
 ### Connection issues?

@@ -116,7 +116,7 @@ class DrowsinessFeatureExtractor:
         if horizontal == 0:
             return 0.0
         
-        mar = (vertical_1 + vertical_2) / (2.0 * horizontal)
+        mar = (vertical_1 + vertical_2) / (2.0 * horizontal) * 1.5
         return mar
     
     def calculate_head_pose(self, nose_landmarks: List[Tuple[float, float, float]], 

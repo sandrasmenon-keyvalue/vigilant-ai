@@ -114,7 +114,7 @@ class DrowsinessOptimizedExtractor(EnhancedDrowsinessFeatureExtractor):
         More aggressive yawn detection - catch subtle yawns.
         """
         # Method 1: Lower MAR threshold  
-        aggressive_mar_threshold = 0.3  # Lower than default 0.5
+        aggressive_mar_threshold = 0.1  # Lower than default 0.5
         mar_yawn = mar > aggressive_mar_threshold
         
         # Method 2: MediaPipe blendshapes (more sensitive)
@@ -153,9 +153,14 @@ class DrowsinessOptimizedExtractor(EnhancedDrowsinessFeatureExtractor):
             'slow_response': slow_response
         }
     
-    def extract_features(self, landmark_data: Dict, timestamp: float = 0.0) -> Dict[str, float]:
+    def extract_features(self, landmark_data: Dict, timestamp: float = 0.0, blendshapes: Dict[str, float] = None) -> Dict[str, float]:
         """
         Extract optimized features with stronger drowsiness signals.
+        
+        Args:
+            landmark_data: Landmark data from face detection
+            timestamp: Timestamp for temporal analysis
+            blendshapes: Optional blendshape data from MediaPipe
         """
         if landmark_data is None:
             return self._get_default_features()
@@ -165,7 +170,10 @@ class DrowsinessOptimizedExtractor(EnhancedDrowsinessFeatureExtractor):
         
         # Apply drowsiness optimizations
         avg_ear = features['avg_ear']
-        blendshapes = landmark_data.get('blendshapes', {})
+        
+        # Use blendshapes parameter if provided, otherwise extract from landmark_data
+        if blendshapes is None:
+            blendshapes = landmark_data.get('blendshapes', {})
         
         # 1. Enhanced eye closure with prolonged detection
         optimized_eye_closure = self.detect_prolonged_eye_closure(avg_ear, timestamp)
@@ -179,7 +187,7 @@ class DrowsinessOptimizedExtractor(EnhancedDrowsinessFeatureExtractor):
             features['blink_detected'] = 1.0
         
         # 3. More aggressive yawn detection
-        mar = features['mar']
+        mar = 1.5*features['mar']
         aggressive_yawn = self.enhanced_yawn_detection_aggressive(mar, blendshapes)
         features['yawn_indicator'] = 1.0 if aggressive_yawn else 0.0
         

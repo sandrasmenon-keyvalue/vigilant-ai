@@ -155,8 +155,8 @@ async def startup_event():
         
         
         # Load trained model and scaler
-        model_path = "trained_models/vision-training/enhanced_drowsiness_model.pkl"
-        scaler_path = "trained_models/vision-training/enhanced_feature_scaler.pkl"
+        model_path = "trained_models/enhanced_vision_training_limited/models/drowsiness_model.pkl"
+        scaler_path = "trained_models/enhanced_vision_training_limited/models/feature_scaler.pkl"
         
         if os.path.exists(model_path) and os.path.exists(scaler_path):
             # Load the trained model (try joblib first, then pickle)

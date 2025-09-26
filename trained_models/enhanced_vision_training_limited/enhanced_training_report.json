@@ -1,0 +1,86 @@
+{
+  "training_metadata": {
+    "timestamp": "2025-09-26T10:55:56.616184",
+    "model_type": "xgboost",
+    "feature_extractor": "DrowsinessOptimizedExtractor",
+    "face_detector": "MediaPipe Face Landmarker (478 landmarks + blendshapes)"
+  },
+  "training_statistics": {
+    "images_processed": 10000,
+    "faces_detected": 9852,
+    "features_extracted": 9852,
+    "blendshapes_detected": 9852,
+    "training_time": 0.1842021942138672,
+    "model_type": "xgboost"
+  },
+  "model_performance": {
+    "accuracy": 0.8092338914256723,
+    "auc_score": 0.8910556647182162,
+    "classification_report": {
+      "0": {
+        "precision": 0.8078512396694215,
+        "recall": 0.8045267489711934,
+        "f1-score": 0.8061855670103092,
+        "support": 972.0
+      },
+      "1": {
+        "precision": 0.810568295114656,
+        "recall": 0.8138138138138138,
+        "f1-score": 0.8121878121878121,
+        "support": 999.0
+      },
+      "accuracy": 0.8092338914256723,
+      "macro avg": {
+        "precision": 0.8092097673920388,
+        "recall": 0.8091702813925036,
+        "f1-score": 0.8091866895990607,
+        "support": 1971.0
+      },
+      "weighted avg": {
+        "precision": 0.8092283773608416,
+        "recall": 0.8092338914256723,
+        "f1-score": 0.8092278008673998,
+        "support": 1971.0
+      }
+    }
+  },
+  "feature_analysis": {
+    "feature_count": 14,
+    "feature_names": [
+      "avg_ear",
+      "blink_detected",
+      "blink_frequency",
+      "eye_closure",
+      "face_detected",
+      "head_pitch",
+      "head_roll",
+      "head_yaw",
+      "left_ear",
+      "mar",
+      "nod_detected",
+      "nod_frequency",
+      "right_ear",
+      "yawn_indicator"
+    ],
+    "feature_importance": {
+      "head_roll": "0.17132705",
+      "mar": "0.15614358",
+      "head_yaw": "0.12066708",
+      "head_pitch": "0.11498113",
+      "left_ear": "0.11173328",
+      "avg_ear": "0.10061557",
+      "right_ear": "0.08176016",
+      "nod_frequency": "0.041354604",
+      "eye_closure": "0.0399057",
+      "blink_detected": "0.032457292",
+      "nod_detected": "0.029054526",
+      "blink_frequency": "0.0",
+      "face_detected": "0.0",
+      "yawn_indicator": "0.0"
+    }
+  },
+  "data_quality": {
+    "success_rate": 98.52,
+    "blendshape_coverage": 100.0
+  }
+}

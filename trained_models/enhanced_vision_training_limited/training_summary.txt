@@ -1,0 +1,31 @@
+🚗 VIGILANT AI - Enhanced Training Report
+==================================================
+
+📅 Training Date: 2025-09-26 10:55:56
+🤖 Model Type: XGBOOST
+🎯 Feature Extractor: Enhanced with MediaPipe Face Landmarker
+
+📊 PERFORMANCE METRICS:
+   Accuracy: 80.9%
+   AUC Score: 0.891
+
+📈 TRAINING STATISTICS:
+   Images Processed: 10000
+   Faces Detected: 9852
+   Success Rate: 98.5%
+   Blendshapes Detected: 9852
+   Training Time: 0.2s
+
+🎯 TOP 10 MOST IMPORTANT FEATURES:
+    1. head_roll           : 0.1713
+    2. mar                 : 0.1561
+    3. head_yaw            : 0.1207
+    4. head_pitch          : 0.1150
+    5. left_ear            : 0.1117
+    6. avg_ear             : 0.1006
+    7. right_ear           : 0.0818
+    8. nod_frequency       : 0.0414
+    9. eye_closure         : 0.0399
+   10. blink_detected      : 0.0325
+
+✅ Enhanced model ready for deployment!

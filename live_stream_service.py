@@ -1297,26 +1297,29 @@ async def get_all_logs():
     }
 
 
+class HVDataRequest(BaseModel):
+    hv_data: dict
+    timestamp: float
+    source: str = "vitals_api"
+
 @app.post("/sync_engine/receive_hv_data")
-async def receive_hv_data_endpoint(hv_data: dict, timestamp: float, source: str = "vitals_api"):
+async def receive_hv_data_endpoint(request: HVDataRequest):
     """
     Receive HV data from external sources (like vitals processor) and send to sync engine.
     
     Args:
-        hv_data: Vitals data dictionary
-        timestamp: Timestamp when data was collected
-        source: Source of the data
+        request: HVDataRequest containing hv_data, timestamp, and source
     """
     if sync_inference_engine is None:
         raise HTTPException(status_code=503, detail="Synchronized Inference Engine not available")
     
     try:
-        success = sync_inference_engine.receive_hv_data(hv_data, timestamp, source)
+        success = sync_inference_engine.receive_hv_data(request.hv_data, request.timestamp, request.source)
         return {
             "success": success,
             "message": "HV data received" if success else "Failed to process HV data",
-            "timestamp": timestamp,
-            "source": source
+            "timestamp": request.timestamp,
+            "source": request.source
         }
     except Exception as e:
         logger.error(f"Error receiving HV data via API: {e}")

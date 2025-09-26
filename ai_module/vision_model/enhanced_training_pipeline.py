@@ -55,9 +55,9 @@ class EnhancedTrainingPipeline:
         # Initialize enhanced components
         logger.info("🚀 Initializing MediaPipe Face Landmarker...")
         self.face_detector = FaceLandmarkDetector(
-            min_face_detection_confidence=0.5,
-            min_face_presence_confidence=0.5,
-            min_tracking_confidence=0.5,
+            min_face_detection_confidence=0.3,  # Lower threshold for better detection
+            min_face_presence_confidence=0.3,   # Lower threshold for better detection
+            min_tracking_confidence=0.3,        # Lower threshold for better detection
             num_faces=1,
             output_blendshapes=True  # Enable blendshapes for enhanced features
         )
@@ -236,6 +236,16 @@ class EnhancedTrainingPipeline:
                 
                 # Detect landmarks using MediaPipe Face Landmarker
                 landmarks = self.face_detector.detect_landmarks(rgb_frame)
+                
+                # Debug: Print detection results for first few images
+                if idx < 5:
+                    if landmarks is None:
+                        logger.warning(f"🔍 DEBUG: No landmarks returned for image {idx+1}: {img_info['image_name']}")
+                    elif not landmarks.get('face_detected', False):
+                        logger.warning(f"🔍 DEBUG: Face not detected for image {idx+1}: {img_info['image_name']}")
+                        logger.warning(f"   Landmarks keys: {list(landmarks.keys()) if landmarks else 'None'}")
+                    else:
+                        logger.info(f"✅ DEBUG: Face detected for image {idx+1}: {img_info['image_name']}")
                 
                 if landmarks and landmarks.get('face_detected', False):
                     # Extract enhanced features

@@ -148,7 +148,7 @@ def main():
                                 print("\n📋 WebSocket Endpoints:")
                                 print("   Mobile Browser:    /ws/mobile_stream")
                                 print("   Desktop/Local:     /ws/live_stream")
-                                print("   Vitals Backend:    ws://192.168.5.102:4000/ws?token=dev-shared-secret (configurable)")
+                                print("   Vitals Backend:    ws://192.168.5.93:4000/ws?token=dev-shared-secret (configurable)")
                                 print("\n🔧 Vitals Configuration:")
                                 print("   Set environment variables for vitals backend:")
                                 print("     VITALS_WEBSOCKET_URI - Backend WebSocket URI")

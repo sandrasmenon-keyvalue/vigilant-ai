@@ -30,7 +30,7 @@ class EnhancedDrowsinessFeatureExtractor:
         
         # Enhanced parameters for MediaPipe Face Landmarker
         self.blendshape_blink_threshold = 0.4  # eyeBlinkLeft/Right threshold
-        self.blendshape_yawn_threshold = 0.3   # jawOpen threshold
+        self.blendshape_yawn_threshold = 0.1   # jawOpen threshold
         self.blendshape_squint_threshold = 0.2  # eyeSquintLeft/Right threshold
         
         # Temporal tracking (same as before)
@@ -254,16 +254,23 @@ class EnhancedDrowsinessFeatureExtractor:
         
         return False
     
-    def extract_features(self, landmark_data: Dict, timestamp: float = 0.0) -> Dict[str, float]:
+    def extract_features(self, landmark_data: Dict, timestamp: float = 0.0, blendshapes: Dict[str, float] = None) -> Dict[str, float]:
         """
         Extract the SAME 14 features but with enhanced accuracy using MediaPipe blendshapes.
         NO MODEL RETRAINING REQUIRED - same interface, better values!
+        
+        Args:
+            landmark_data: Landmark data from face detection
+            timestamp: Timestamp for temporal analysis
+            blendshapes: Optional blendshape data from MediaPipe
         """
         if landmark_data is None:
             return self._get_default_features()
         
         # Extract blendshapes if available (NEW!)
-        blendshapes = landmark_data.get('blendshapes', {})
+        # Use blendshapes parameter if provided, otherwise extract from landmark_data
+        if blendshapes is None:
+            blendshapes = landmark_data.get('blendshapes', {})
         drowsiness_blendshapes = landmark_data.get('drowsiness_blendshapes', {})
         
         # Use available blendshapes

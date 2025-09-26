@@ -89,7 +89,7 @@ def wait_for_service(url: str, service_name: str, timeout: int = 30):
 
 def check_vitals_websocket_config():
     """Check if vitals WebSocket configuration is available."""
-    vitals_uri = os.getenv('VITALS_WEBSOCKET_URI', 'ws://192.168.5.102:4000/ws?token=dev-shared-secret')
+    vitals_uri = os.getenv('VITALS_WEBSOCKET_URI', 'ws://192.168.5.93:4000/ws?token=dev-shared-secret')
     api_key = os.getenv('VITALS_API_KEY')
     auth_token = os.getenv('VITALS_AUTH_TOKEN')
     

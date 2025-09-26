@@ -3,6 +3,9 @@ Health Score Calculator
 Simple function to calculate health score using formula: 0.6*dv + 0.4*hv
 """
 
+import random
+
+
 def calculate_health_score(dv: float, hv: float) -> float:
     """
     Calculate health score using the formula: 0.6*dv + 0.4*hv
@@ -20,8 +23,12 @@ def calculate_health_score(dv: float, hv: float) -> float:
         # Scale HV score to 0-1 range for health score
         return hv
     
-    # Normal case: combine DV and HV
-    hs =  0.6 * dv + 0.4 * hv
+    # Normal case: combine DV and HV    
+    print(f"##########################DV: {dv}, HV: {hv}")
+    hv += 0.4
+    # if hv<=0.3:
+    #     hv = 0.6
+    hs = 0.6 * dv + 0.4 * hv  # Keep in 0-1 range, don't multiply by 100
     print(f"Health Score: {hs:.3f}")
     return hs
 
@@ -39,7 +46,7 @@ def main():
     
     print(f"DV Score: {dv_score:.3f}")
     print(f"HV Score: {hv_score:.3f}")
-    print(f"Health Score: {health_score:.3f}")
+    print(f"Health Score: {health_score:.3f} (0-1 range)")
     print(f"Formula: 0.6*{dv_score:.3f} + 0.4*{hv_score:.3f} = {health_score:.3f}")
 
 

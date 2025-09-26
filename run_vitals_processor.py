@@ -108,7 +108,7 @@ async def main():
     """Main function to run the vitals processor."""
     parser = argparse.ArgumentParser(description='Run Vitals WebSocket Processor')
     parser.add_argument('--uri', default=None, 
-                       help='WebSocket URI (default: from VITALS_WEBSOCKET_URI env var or ws://192.168.5.102:4000/ws?token=dev-shared-secret)')
+                       help='WebSocket URI (default: from VITALS_WEBSOCKET_URI env var or ws://192.168.5.93:4000/ws?token=dev-shared-secret)')
     parser.add_argument('--age', type=int, default=35, 
                        help='Patient age (default: 35)')
     parser.add_argument('--api-key', default=None,
@@ -134,7 +134,7 @@ async def main():
     setup_logging(args.verbose)
     
     # Get WebSocket URI
-    websocket_uri = args.uri or os.getenv('VITALS_WEBSOCKET_URI', 'ws://192.168.5.102:4000/ws?token=dev-shared-secret')
+    websocket_uri = args.uri or os.getenv('VITALS_WEBSOCKET_URI', 'ws://192.168.5.93:4000/ws?token=dev-shared-secret')
     
     # Get authentication credentials
     api_key = args.api_key or os.getenv('VITALS_API_KEY')

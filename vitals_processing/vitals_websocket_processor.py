@@ -27,7 +27,7 @@ class VitalsWebSocketProcessor:
     """
     
     def __init__(self, 
-                 websocket_uri: str = "ws://192.168.5.102:4000/ws?token=dev-shared-secret",
+                 websocket_uri: str = "ws://192.168.5.93:4000/ws?token=dev-shared-secret",
                  api_key: Optional[str] = None,
                  auth_token: Optional[str] = None,
                  headers: Optional[Dict[str, str]] = None,
@@ -154,11 +154,17 @@ class VitalsWebSocketProcessor:
         
         # Process vitals for HV prediction
         try:
+            hr = vitals_data.get('hr', 0)
+            spo2 = vitals_data.get('spo2', 0)
+            print(f"📊 PROCESSING VITALS: HR={hr}, SpO2={spo2}")
+            
             hv_result = self.vitals_processor.process_websocket_vitals(
                 vitals_data, 
                 age=self.age, 
                 health_conditions=self.health_conditions
             )
+            
+            print(f"   HV Score calculated: {hv_result.get('hv_score', 'N/A')}")
             
             # Add original vitals data to result
             hv_result['original_vitals'] = vitals_data
@@ -210,8 +216,11 @@ class VitalsWebSocketProcessor:
         }
         
         # Try direct connection first (if available)
+        print(f"📡 SENDING HV DATA: score={hv_result['hv_score']:.3f}, timestamp={timestamp:.3f}")
+        
         if self.sync_inference_engine is not None:
             try:
+                print("   → Using direct connection to sync engine")
                 success = self.sync_inference_engine.receive_hv_data(
                     hv_data=hv_data,
                     timestamp=timestamp,
@@ -219,27 +228,39 @@ class VitalsWebSocketProcessor:
                 )
                 
                 if success:
+                    print("   ✅ Successfully sent via direct connection")
                     logger.info(f"📡 HV data sent to local sync engine: score={hv_result['hv_score']:.3f}, timestamp={timestamp:.3f}")
                     return
                 else:
+                    print("   ❌ Failed to send via direct connection")
                     logger.warning(f"⚠️  Failed to send HV data to local sync engine")
                     
             except Exception as e:
+                print(f"   ❌ Exception in direct connection: {e}")
                 logger.error(f"Error sending HV data to local sync engine: {e}")
         
         # Fallback to HTTP API call to live stream service
+        print("   → Falling back to HTTP API call")
         try:
             url = f"{self.live_stream_service_url}/sync_engine/receive_hv_data"
+            
+            # Create proper request payload for FastAPI Pydantic model
             payload = {
                 "hv_data": hv_data,
                 "timestamp": timestamp,
                 "source": "vitals_websocket_api"
             }
             
+            print(f"   API URL: {url}")
+            print(f"   Payload: {payload}")
+            
             # Disable SSL verification for self-signed certificates
             verify_ssl = not self.live_stream_service_url.startswith('https')
             
+            # Send as JSON body (FastAPI will parse it into the Pydantic model)
             response = requests.post(url, json=payload, timeout=5, verify=verify_ssl)
+            
+            print(f"   Response: {response.status_code} - {response.text}")
             
             if response.status_code == 200:
                 result = response.json()
@@ -415,7 +436,7 @@ async def main():
     
     # Create processor
     processor = VitalsWebSocketProcessor(
-        websocket_uri="ws://192.168.5.102:4000/ws?token=dev-shared-secret",
+        websocket_uri="ws://192.168.5.93:4000/ws?token=dev-shared-secret",
         age=45,
         health_conditions=health_conditions
     )

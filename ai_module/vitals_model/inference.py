@@ -139,15 +139,22 @@ class VitalsInferenceEngine:
             raise RuntimeError("Model not loaded. Call load_model() first.")
         
         # Preprocess input
+        print(f"*************Input vitals_data: {vitals_data}")
         X = self.preprocess_input(vitals_data)
+        print(f"*************Preprocessed X: {X}")
         
         # Make prediction
         prediction = self.model.predict(X)
+        print(f"*************Raw Prediction: {prediction}")
+        print(f"*************Prediction shape: {prediction.shape}")
         
         # Return single value for single sample, array for multiple samples
         if prediction.shape[0] == 1:
-            return float(prediction[0])
+            result = float(prediction[0])
+            print(f"*************Final HV Score: {result}")
+            return result
         else:
+            print(f"*************Multiple predictions: {prediction}")
             return prediction
     
     def predict_with_confidence(self, vitals_data: Union[Dict, pd.DataFrame, np.ndarray]) -> Dict:

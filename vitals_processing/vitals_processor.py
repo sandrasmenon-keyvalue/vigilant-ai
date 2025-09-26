@@ -239,8 +239,10 @@ class VitalsProcessor:
         }
         
         try:
+            print(f"##########################Vitals Data Input: {vitals_data}")
             # Predict HV score
             hv_score = self.inference_engine.predict_hv(vitals_data)
+            print(f"##########################HV Score from Model: {hv_score}")
             
             # Get interpretation
             interpretation = self.inference_engine.interpret_hv_score(hv_score)
@@ -288,7 +290,11 @@ class VitalsProcessor:
         temperature = vitals_data.get('temperature', None)
         co2_level = vitals_data.get('co2_level', None)
         
+        print(f"##########################WebSocket Vitals: HR={hr}, SpO2={spo2}, Age={age}")
+        print(f"##########################Health Conditions: {health_conditions}")
+        
         if hr <= 0 or spo2 <= 0:
+            print(f"##########################ERROR: Invalid vitals data: HR={hr}, SpO2={spo2}")
             raise ValueError(f"Invalid vitals data: HR={hr}, SpO2={spo2}")
         
         return self.process_vitals(hr, spo2, age, health_conditions, temperature, co2_level)

@@ -20,7 +20,7 @@ class SimpleWebSocketSender:
     Simple WebSocket sender that runs in its own thread to avoid event loop conflicts.
     """
     
-    def __init__(self, uri: str = "ws://192.168.5.102:4000/ws?token=dev-shared-secret"):
+    def __init__(self, uri: str = "ws://192.168.5.93:4000/ws?token=dev-shared-secret"):
         """
         Initialize the WebSocket sender.
         
@@ -49,7 +49,7 @@ class SimpleWebSocketSender:
             self.thread.join(timeout=5)
         logger.info("🛑 WebSocket sender thread stopped")
     
-    def send_health_score(self, health_score: int, **kwargs) -> bool:
+    def send_health_score(self, health_score: float, **kwargs) -> bool:
         """
         Send health score message.
         
@@ -63,7 +63,7 @@ class SimpleWebSocketSender:
         try:
             message = {
                 "type": "health_score",
-                "userId": "user123",
+                "userId": "dcc7fb95-2751-4149-8058-5a84a06b68b5",
                 "payload": {
                     "score": health_score,
                     "reasons": ["well rested", "good heart rate", "low stress level"]
@@ -99,7 +99,7 @@ class SimpleWebSocketSender:
         try:
             message = {
                 "type": "speech_alert",
-                "userId": "user123",
+                "userId": "dcc7fb95-2751-4149-8058-5a84a06b68b5",
                 "payload": {
                     "text": reason,
                     "description":""

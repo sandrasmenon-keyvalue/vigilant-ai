@@ -1,6 +1,6 @@
 """
 WebSocket Event Sender Module
-Simple module to send events to WebSocket server at ws://192.168.5.102:4000/ws?token=dev-shared-secret
+Simple module to send events to WebSocket server at ws://192.168.5.93:4000/ws?token=dev-shared-secret
 """
 
 import asyncio
@@ -20,7 +20,7 @@ class WebSocketEventSender:
     Simple WebSocket client for sending events to the server.
     """
     
-    def __init__(self, uri: str = "ws://192.168.5.102:4000/ws?token=dev-shared-secret"):
+    def __init__(self, uri: str = "ws://192.168.5.93:4000/ws?token=dev-shared-secret"):
         """
         Initialize WebSocket event sender.
         
@@ -112,7 +112,7 @@ class WebSocketEventSender:
         """
         data = {
             "type": "health_score",
-            "userId": "user123",
+            "userId": "dcc7fb95-2751-4149-8058-5a84a06b68b5",
             "payload": {
                 "score": health_score,
                 "reasons": ["well rested", "good heart rate", "low stress level"]

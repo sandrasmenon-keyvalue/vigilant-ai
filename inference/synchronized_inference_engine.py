@@ -94,11 +94,11 @@ class SynchronizedInferenceEngine:
         
         # Rule check parameters
         self.dv_threshold = 0.6  # DV alert threshold
-        self.hv_threshold = 0.3  # HV alert threshold (adjust as needed)
-        self.hr_normal_range = (60, 100)  # Normal HR range (BPM)
+        self.hv_threshold = 0.5  # HV alert threshold (adjust as needed)
+        self.hr_normal_range = (80, 140)  # Normal HR range (BPM)
         self.spo2_normal_range = (95, 100)  # Normal SpO2 range (%)
         self.monitoring_window = 30.0  # 30 seconds monitoring window
-        self.max_violations = 21  # Maximum violations in 30s window
+        self.max_violations = 25  # Maximum violations in 30s window
         
         # Rule check counters and timers
         self.hr_violation_counter = 0
@@ -234,6 +234,10 @@ class SynchronizedInferenceEngine:
             True if data was received successfully, False otherwise
         """
         try:
+            print(f"🩺 HV DATA RECEIVED: timestamp={timestamp:.3f}, source={source}")
+            if isinstance(hv_data, dict) and 'hv_score' in hv_data:
+                print(f"   HV Score: {hv_data['hv_score']:.3f}")
+            
             with self.lock:
                 data_point = DataPoint(
                     timestamp=timestamp,
@@ -246,6 +250,8 @@ class SynchronizedInferenceEngine:
                 self.hv_buffer.append(data_point)
                 self.stats['total_hv_received'] += 1
                 
+                print(f"   HV Buffer size: {len(self.hv_buffer)} (DV Buffer: {len(self.dv_buffer)})")
+                
                 # Set timeout for this HV data point
                 self.pending_hv_timeout[timestamp] = time.time() + self.sync_timeout
                 
@@ -255,6 +261,7 @@ class SynchronizedInferenceEngine:
                 
                 # Try to synchronize with DV data
                 self._try_synchronize()
+                print(f"   After sync attempt - HV Buffer: {len(self.hv_buffer)}")
                 
                 return True
                 
@@ -277,6 +284,13 @@ class SynchronizedInferenceEngine:
         dv_list = list(self.dv_buffer)
         hv_list = list(self.hv_buffer)
         
+        if len(hv_list) == 0:
+            print("⚠️  HV LIST IS EMPTY - No vitals data to synchronize")
+        else:
+            print(f"🔄 SYNC ATTEMPT: DV={len(dv_list)}, HV={len(hv_list)}")
+            
+        print("HV LIST: ", hv_list)
+        
         # Find matching pairs within sync tolerance
         for dv_point in dv_list:
             for hv_point in hv_list:
@@ -287,6 +301,7 @@ class SynchronizedInferenceEngine:
         
         # Process synchronized pairs
         for dv_point, hv_point, time_diff in synchronized_pairs:
+            print(f"*************DV: {dv_point.data}, HV: {hv_point.data}")
             try:
                 result = self._process_synchronized_data(dv_point, hv_point, time_diff)
                 if result:
@@ -329,7 +344,7 @@ class SynchronizedInferenceEngine:
                 # Create default HV data point
                 default_hv_point = DataPoint(
                     timestamp=dv_point.timestamp,
-                    data=0.0,  # Default HV score when no vitals
+                    data=0.5,  # Default neutral HV score when no vitals (changed from 0.0)
                     data_type='hv',
                     source='default',
                     received_at=time.time()
@@ -421,26 +436,26 @@ class SynchronizedInferenceEngine:
             
             # Send health score via WebSocket
             try:
-                socket = VitalsWebSocketClient()
-                message = json.dumps({
-                    "payload": {
-                        "score": health_score,
-                        "reasons": []
-                    }
-                })
-                socket.send_message(message)
-                # success = send_health_score_simple(
-                #     health_score=int(health_score),
-                #     dv_score=dv_score,
-                #     hv_score=hv_score,
-                #     mode="synchronized",
-                #     sync_tolerance=time_diff,
-                #     source="synchronized_inference_engine"
-                # )
-                # if success and self.enable_logging:
-                #     logger.info(f"📤 Health score queued for WebSocket: {health_score:.3f}")
-                # elif not success:
-                #     logger.warning(f"⚠️  Failed to queue health score: {health_score:.3f}")
+                # socket = VitalsWebSocketClient()
+                # message = json.dumps({
+                #     "payload": {
+                #         "score": health_score,
+                #         "reasons": []
+                #     }
+                # })
+                # socket.send_message(message)
+                success = send_health_score_simple(
+                    health_score=health_score,
+                    dv_score=dv_score,
+                    hv_score=hv_score,
+                    mode="synchronized",
+                    sync_tolerance=time_diff,
+                    source="synchronized_inference_engine"
+                )
+                if success and self.enable_logging:
+                    logger.info(f"📤 Health score queued for WebSocket: {health_score:.3f}")
+                elif not success:
+                    logger.warning(f"⚠️  Failed to queue health score: {health_score:.3f}")
             except Exception as e:
                 logger.error(f"❌ Error queuing health score for WebSocket: {e}")
             
@@ -511,21 +526,32 @@ class SynchronizedInferenceEngine:
         Returns:
             HV score (0-1)
         """
+        print("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ HV SCORE: ", hv_data )
+        print(f"HV data type: {type(hv_data)}")
+        
         # If hv_data is already a score (float)
         if isinstance(hv_data, (int, float)):
+            print(f"HV data is numeric: {hv_data}")
             return float(hv_data)
         
         # If hv_data is a dictionary with score
         if isinstance(hv_data, dict):
+            print(f"HV data is dict with keys: {list(hv_data.keys())}")
             if 'hv_score' in hv_data:
+                print(f"Found hv_score: {hv_data['hv_score']}")
                 return float(hv_data['hv_score'])
             elif 'score' in hv_data:
+                print(f"Found score: {hv_data['score']}")
                 return float(hv_data['score'])
             elif 'health_score' in hv_data:
+                print(f"Found health_score: {hv_data['health_score']}")
                 return float(hv_data['health_score'])
+            else:
+                print(f"No valid HV score key found in dict keys: {list(hv_data.keys())}")
         
         # If hv_data contains raw vitals, you would process it here
         # For now, return a default value
+        print(f"DEFAULTING TO 0.5 - Could not extract HV score from data type: {type(hv_data)}")
         logger.warning(f"Could not extract HV score from data type: {type(hv_data)}")
         return 0.5  # Default middle value
     
@@ -725,28 +751,28 @@ class SynchronizedInferenceEngine:
         
         # Send alert via WebSocket
         try:
-            # success = send_alert_simple(
-            #     alert_type=alert_type,
-            #     reason=reason,
-            #     alert_level=alert_level,
-            #     source="synchronized_inference_engine",
-            #     timestamp=time.time()
-            # )
-            # if success and self.enable_logging:
-            #     logger.info(f"📤 Alert queued for WebSocket: {alert_type}")
-            # elif not success:
-            #     logger.warning(f"⚠️  Failed to queue alert: {alert_type}")
+            success = send_alert_simple(
+                alert_type=alert_type,
+                reason=reason,
+                alert_level=alert_level,
+                source="synchronized_inference_engine",
+                timestamp=time.time()
+            )
+            if success and self.enable_logging:
+                logger.info(f"📤 Alert queued for WebSocket: {alert_type}")
+            elif not success:
+                logger.warning(f"⚠️  Failed to queue alert: {alert_type}")
 
-            socket = VitalsWebSocketClient()
-            message = json.dumps({
-                "type": "speech_alert",
-                "userId": "user123",
-                "payload": {
-                    "text": reason,
-                    "description":""
-                }
-            })
-            socket.send_message(message)
+            # socket = VitalsWebSocketClient()
+            # message = json.dumps({
+            #     "type": "speech_alert",
+            #     "userId": "user123",
+            #     "payload": {
+            #         "text": reason,
+            #         "description":""
+            #     }
+            # })
+            # socket.send_message(message)
         except Exception as e:
             logger.error(f"❌ Error queuing alert for WebSocket: {e}")
         
@@ -792,12 +818,16 @@ class SynchronizedInferenceEngine:
         processed_hv_timestamps = {pair[1].timestamp for pair in synchronized_pairs}
         
         # Remove processed DV points
+        if processed_dv_timestamps:
+            print(f"🗑️  CLEANUP: Removing {len(processed_dv_timestamps)} processed DV points")
         self.dv_buffer = deque(
             [point for point in self.dv_buffer if point.timestamp not in processed_dv_timestamps],
             maxlen=self.max_buffer_size
         )
         
         # Remove processed HV points
+        if processed_hv_timestamps:
+            print(f"🗑️  CLEANUP: Removing {len(processed_hv_timestamps)} processed HV points")
         self.hv_buffer = deque(
             [point for point in self.hv_buffer if point.timestamp not in processed_hv_timestamps],
             maxlen=self.max_buffer_size
